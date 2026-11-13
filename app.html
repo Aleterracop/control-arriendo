@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#12345e">
+<title>Gestión de Arriendos | Grupo Terracop</title>
+<style>
+:root{--navy:#12345e;--navy2:#1d4a80;--blue:#2b7fd4;--pale:#eaf4fd;--ink:#1b2430;--muted:#5d6b7a;--line:#e3e8ef;--bg:#f5f7fa;
+--red:#c62828;--redbg:#fdecea;--amber:#9a6200;--amberbg:#fff4dc;--orange:#c25400;--orangebg:#fff0e3;--green:#2e7d32;--greenbg:#e8f5e9}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 "Segoe UI",Arial,Helvetica,sans-serif}
+header{background:#fff;border-bottom:4px solid var(--navy);position:sticky;top:0;z-index:20}
+.hw{max-width:1200px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.logo{height:40px}
+.ht{flex:1;min-width:180px}.ht h1{margin:0;font-size:17px;color:var(--navy)}.ht .sub{color:var(--muted);font-size:12px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav a{color:var(--navy);text-decoration:none;font-weight:600;padding:7px 11px;border-radius:6px;font-size:13.5px}
+nav a.on{background:var(--navy);color:#fff}
+nav a .cnt{background:var(--red);color:#fff;border-radius:10px;padding:0 6px;font-size:11px;margin-left:4px}
+main{max-width:1200px;margin:0 auto;padding:16px 16px 90px}
+button,.btn{font:inherit;border:1px solid var(--navy);background:#fff;color:var(--navy);padding:7px 12px;border-radius:6px;cursor:pointer;font-weight:600}
+button.pri{background:var(--navy);color:#fff}button.pri:hover{background:var(--navy2)}
+button.sm{padding:4px 9px;font-size:12.5px}button.dan{border-color:var(--red);color:var(--red)}
+button:disabled{opacity:.5;cursor:default}
+.card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:14px}
+.card h2{font-size:15px;margin:0 0 8px;color:var(--navy)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sp{flex:1}
+.muted{color:var(--muted)}.small{font-size:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px 12px;border-top:4px solid var(--blue)}
+.kpi .l{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:600}
+.kpi .v{font-size:20px;font-weight:700;color:var(--navy);margin-top:2px;white-space:nowrap}
+.kpi.r{border-top-color:var(--red)}.kpi.r .v{color:var(--red)}.kpi.g{border-top-color:var(--green)}.kpi.o{border-top-color:var(--orange)}
+.al{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:8px;margin-bottom:8px;border-left:5px solid}
+.al.red{background:var(--redbg);border-color:var(--red)}.al.amber{background:var(--amberbg);border-color:#e0a020}
+.al.orange{background:var(--orangebg);border-color:var(--orange)}.al.blue{background:var(--pale);border-color:var(--blue)}.al.green{background:var(--greenbg);border-color:var(--green)}
+.al .ic{font-size:18px;line-height:1.2}.al .tx{flex:1}.al b{color:var(--ink)}
+.al a{color:var(--navy2);font-weight:600}
+.chip{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11.5px;font-weight:600;white-space:nowrap;background:#eef1f4;color:#5d6b7a}
+.c-red{background:var(--redbg);color:var(--red)}.c-amber{background:var(--amberbg);color:var(--amber)}.c-orange{background:var(--orangebg);color:var(--orange)}
+.c-green{background:var(--greenbg);color:var(--green)}.c-blue{background:var(--pale);color:var(--navy2)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.ac{background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 14px;cursor:pointer}
+.ac:hover{border-color:var(--blue)}
+.ac h3{margin:0 0 2px;font-size:15px;color:var(--navy)}
+.bar{height:9px;background:#e6edf5;border-radius:5px;overflow:hidden;margin:6px 0 2px}
+.bar i{display:block;height:100%;background:var(--blue)}
+.bar i.w{background:#e0a020}.bar i.x{background:var(--red)}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{background:var(--navy);color:#fff;text-align:left;font-weight:600;padding:6px 8px;white-space:nowrap}
+td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.n,th.n{text-align:right;white-space:nowrap}
+tr.click{cursor:pointer}tr.click:hover td{background:#f5faff}
+input,select,textarea{font:inherit;padding:7px 8px;border:1px solid #c9d3de;border-radius:6px;background:#fff;width:100%}
+textarea{min-height:60px}
+td input,td select{padding:4px 6px}
+label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bottom:3px}
+.f{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line);margin:4px 0 12px;flex-wrap:wrap}
+.tabs button{border:none;border-radius:6px 6px 0 0;background:none;padding:8px 12px}
+.tabs button.on{background:var(--navy);color:#fff}
+.msg{padding:10px 12px;border-radius:8px;margin-bottom:12px}
+.msg.err{background:var(--redbg);color:var(--red)}.msg.ok{background:var(--greenbg);color:var(--green)}.msg.info{background:var(--pale);color:var(--navy2)}
+.modal{position:fixed;inset:0;background:rgba(10,25,45,.45);display:flex;align-items:flex-start;justify-content:center;z-index:50;padding:30px 10px;overflow:auto}
+.mb{background:#fff;border-radius:12px;max-width:760px;width:100%;padding:16px 18px}
+.mb h3{margin:0 0 12px;color:var(--navy)}
+.mf{display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap}
+#login{max-width:380px;margin:60px auto}
+.big{font-size:22px;font-weight:700;color:var(--navy)}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;padding:10px 16px;border-radius:8px;z-index:60;box-shadow:0 4px 16px rgba(0,0,0,.2)}
+@media (max-width:700px){
+  .hw{gap:8px}.logo{height:30px}.ht h1{font-size:15px}
+  nav{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--line);justify-content:space-around;padding:6px 4px;z-index:30}
+  nav a{padding:6px 6px;font-size:12px}
+  .hide-m{display:none}
+}
+@media print{header,nav,button{display:none!important}main{padding:0}}
+</style>
+</head>
+<body>
+<header><div class="hw">
+  <img class="logo" alt="Grupo Terracop" src="data:image/png;base64,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">
+  <div class="ht"><h1>Gestión de Arriendos y Servicios</h1><div class="sub" id="who"></div></div>
+  <nav id="nav" hidden>
+    <a href="#inicio" data-v="inicio">🔔 Inicio<span class="cnt" id="ncnt" hidden></span></a>
+    <a href="#arriendos" data-v="arriendos">🚜 Arriendos</a>
+    <a href="#flota" data-v="flota">🏗️ Flota</a>
+    <a href="#catalogo" data-v="catalogo">💲 Catálogo</a>
+    <a href="#mandantes" data-v="mandantes">🏢 Mandantes</a>
+  </nav>
+  <button id="logout" class="sm hide-m" hidden>Salir</button>
+</div></header>
+<main>
+  <div id="msg"></div>
+  <form id="login" class="card" hidden>
+    <h2>Ingresar</h2>
+    <p class="muted small">Use el mismo correo y clave del panel gerencial.</p>
+    <label>Correo</label><input id="lEmail" type="email" autocomplete="username" required>
+    <div style="height:8px"></div>
+    <label>Contraseña</label><input id="lPass" type="password" autocomplete="current-password" required>
+    <div style="height:12px"></div>
+    <button class="pri" id="lBtn" type="submit" style="width:100%">Ingresar</button>
+    <div id="lErr" class="small" style="color:var(--red);margin-top:8px"></div>
+  </form>
+  <div id="view"></div>
+</main>
+<div id="modal" class="modal" hidden><div class="mb" id="mbox"></div></div>
+<script>
+(() => {
+'use strict';
+/* ================= CONFIGURACIÓN (mismo proyecto Supabase del panel) ================= */
+const SUPABASE_URL = 'https://noauwcqdxkvnbnyhqhed.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_BR8Aq9CMZ4YoHEKysHzk-w_OnBJAMOW';   // clave pública (nunca la service_role)
+/* ===================================================================================== */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const clp = v => (v < 0 ? '-$ ' : '$ ') + Math.round(Math.abs(+v || 0)).toLocaleString('es-CL');
+const nf = (v, d = 0) => (+v || 0).toLocaleString('es-CL', {maximumFractionDigits: d});
+const num = v => { if (v === '' || v == null) return null; const n = +String(v).replace(/\./g, '').replace(',', '.'); return isFinite(n) ? n : null; };
+const todayISO = () => { const d = new Date(); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const dUTC = s => { if (!s) return null; const [y, m, d] = s.slice(0, 10).split('-').map(Number); return Date.UTC(y, m - 1, d); };
+const days = (a, b) => Math.round((dUTC(b) - dUTC(a)) / 86400000);      // b - a en días
+const addDays = (s, n) => new Date(dUTC(s) + n * 86400000).toISOString().slice(0, 10);
+const fd = s => s ? s.slice(8, 10) + '-' + s.slice(5, 7) + '-' + s.slice(0, 4) : '';
+const toast = t => { const e = document.createElement('div'); e.className = 'toast'; e.textContent = t; document.body.appendChild(e); setTimeout(() => e.remove(), 2600); };
+
+/* ---------------- Supabase: sesión compartida con el panel ---------------- */
+const AUTHK = 'terracop_sb_session_v1';
+let SESSION = null;
+try { SESSION = JSON.parse(localStorage.getItem(AUTHK) || 'null'); } catch (e) { SESSION = null; }
+const saveSession = () => { try { SESSION ? localStorage.setItem(AUTHK, JSON.stringify(SESSION)) : localStorage.removeItem(AUTHK); } catch (e) {} };
+async function authReq(body, grant) {
+  const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=${grant}`, {method: 'POST', headers: {apikey: SUPABASE_KEY, 'Content-Type': 'application/json'}, body: JSON.stringify(body)});
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(grant === 'password' ? 'Correo o contraseña incorrectos.' : 'Sesión expirada.');
+  return {access_token: j.access_token, refresh_token: j.refresh_token, expires_at: Date.now() + (j.expires_in || 3600) * 1000, email: (j.user && j.user.email) || body.email || ''};
+}
+async function ensureSession() {
+  if (!SESSION || !SESSION.refresh_token) return false;
+  if (Date.now() > (SESSION.expires_at || 0) - 60000) {
+    try { const email = SESSION.email; SESSION = await authReq({refresh_token: SESSION.refresh_token}, 'refresh_token'); SESSION.email = SESSION.email || email; saveSession(); }
+    catch (e) { SESSION = null; saveSession(); return false; }
+  }
+  return true;
+}
+async function api(path, opts = {}) {
+  if (!await ensureSession()) throw new Error('SESSION');
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {...opts, headers: {apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SESSION.access_token, 'Content-Type': 'application/json', ...(opts.headers || {})}});
+  if (r.status === 401) { SESSION = null; saveSession(); throw new Error('SESSION'); }
+  const t = await r.text();
+  if (!r.ok) { let m = ''; try { m = JSON.parse(t).message; } catch (e) {} throw new Error(r.status === 403 ? 'Su usuario no tiene permiso para esta acción.' : (m || 'Error del servidor (' + r.status + ').')); }
+  return t ? JSON.parse(t) : null;
+}
+const ins = (t, o) => api(t, {method: 'POST', headers: {Prefer: 'return=representation'}, body: JSON.stringify(o)}).then(r => r[0]);
+const upd = (t, id, o) => api(`${t}?id=eq.${id}`, {method: 'PATCH', headers: {Prefer: 'return=representation'}, body: JSON.stringify(o)}).then(r => r[0]);
+const del = (t, id) => api(`${t}?id=eq.${id}`, {method: 'DELETE'});
+
+/* ---------------- Datos en memoria ---------------- */
+const D = {};
+const TABLES = ['parametros', 'mandantes', 'equipo_tipos', 'personal', 'materiales', 'flota', 'arriendos', 'periodos', 'horometros', 'edps'];
+async function loadAll() {
+  const res = await Promise.all(TABLES.map(t => api(`${t}?select=*${t === 'horometros' ? '&order=fecha.asc' : ''}&limit=10000`)));
+  TABLES.forEach((t, i) => { D[t] = res[i] || []; });
+  D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
+}
+const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
+const byId = (t, id) => D[t].find(x => x.id === id);
+const mandante = a => byId('mandantes', a.mandante_id) || {};
+const unidadMod = m => ({hora: 'h', dia: 'días', mes: 'mes', global: 'gl'}[m] || '');
+
+/* ---------------- Cálculos por arriendo ---------------- */
+function calc(a) {
+  const hor = D.horometros.filter(h => h.arriendo_id === a.id);
+  const edps = D.edps.filter(e => e.arriendo_id === a.id).sort((x, y) => x.n - y.n);
+  const pers = D.periodos.filter(p => p.arriendo_id === a.id).sort((x, y) => x.n - y.n);
+  const base = +a.base_cobro || (a.modalidad === 'hora' ? P('base_ep_horas', 180) : 30);
+  const hoy = todayISO();
+  let avance = 0, ultimo = null, ultimoFin = null;
+  const enEdp = edps.reduce((s, e) => s + (+e.cantidad || 0), 0);
+  const corte = edps.reduce((m, e) => (e.hasta && e.hasta < hoy && (!m || e.hasta > m)) ? e.hasta : m, null);   // último corte ya cerrado
+  const edpAbierto = edps.find(e => !e.hasta || e.hasta >= hoy) || null;   // EDP que cubre el período en curso
+  let pend;
+  if (a.modalidad === 'hora') {
+    let desdeCorte = 0;
+    hor.forEach(h => { const d = (+h.h_fin || 0) - (+h.h_ini || 0); if (d > 0) { avance += d; if (!corte || h.fecha > corte) desdeCorte += d; } });
+    if (hor.length) { const u = hor[hor.length - 1]; ultimo = u.fecha; ultimoFin = u.h_fin; }
+    pend = desdeCorte;                       // horas trabajadas después del último EDP (el mínimo cobrado no se arrastra)
+  } else if (a.modalidad === 'global') {
+    avance = enEdp; pend = 0;
+  } else {
+    const fin = a.fecha_fin && a.fecha_fin < hoy ? a.fecha_fin : hoy, k = a.modalidad === 'mes' ? 30 : 1;
+    if (a.fecha_inicio && fin >= a.fecha_inicio) avance = (days(a.fecha_inicio, fin) + 1) / k;
+    const ini = corte ? addDays(corte, 1) : a.fecha_inicio;
+    pend = ini && fin >= ini ? (days(ini, fin) + 1) / k : 0;
+  }
+  const monto = e => (+e.monto_arriendo || 0) + (+e.monto_mov || 0) + (+e.monto_desmov || 0) + (+e.monto_otros || 0);
+  const enviado = edps.filter(e => e.estado !== 'borrador').reduce((s, e) => s + monto(e), 0);
+  const vendidoOC = pers.filter(p => p.estado === 'con_oc').reduce((s, p) => s + (+p.cantidad || 0) * (+p.tarifa || 0), 0);
+  const vendidoPal = pers.filter(p => p.estado !== 'con_oc').reduce((s, p) => s + (+p.cantidad || 0) * (+p.tarifa || 0), 0);
+  const movTot = (+a.movilizacion || 0) + (+a.desmovilizacion || 0);
+  const desmovCobrada = edps.some(e => (+e.monto_desmov || 0) > 0);
+  const movCobrada = edps.some(e => (+e.monto_mov || 0) > 0);
+  const diasFin = a.fecha_fin ? days(hoy, a.fecha_fin) : null;
+  return {edpAbierto, hor, edps, pers, base, avance, enEdp, pend, enviado, vendidoOC, vendidoPal, movTot, desmovCobrada, movCobrada, diasFin, ultimo, ultimoFin, monto};
+}
+
+/* ---------------- Alertas ---------------- */
+function alertas() {
+  const L = [], hoy = todayISO();
+  const uH = P('umbral_horas', 0.85), uD = P('umbral_dias', 5), dHes = P('dias_hes', 10), dOc = P('dias_sin_oc', 7);
+  D.arriendos.forEach(a => {
+    const c = calc(a), nom = esc(a.descripcion), m = esc(mandante(a).nombre || ''), link = `<a href="#a-${a.id}">Abrir</a>`;
+    const activo = a.estado === 'palabra' || a.estado === 'con_oc';
+    if (activo && a.modalidad === 'hora') {
+      if (c.pend >= c.base) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): cumplió ${nf(c.pend)} de ${nf(c.base)} h. ${c.edpAbierto ? `<b>Cerrar EDP N° ${c.edpAbierto.n}</b>` : '<b>Confeccionar EDP</b>'} y confirmar con el mandante si prorroga o termina. ${link}`});
+      else if (c.pend >= c.base * uH) L.push({lv: 'amber', ic: '🟡', t: `<b>${nom}</b> (${m}): va en ${nf(c.pend)} de ${nf(c.base)} h. <b>Avisar al mandante</b>: ¿prórroga o término? ${link}`});
+      if (c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último horómetro registrado el ${fd(c.ultimo)}. ${link}`});
+    }
+    if (activo && c.diasFin != null) {
+      if (c.diasFin < 0) L.push({lv: 'red', ic: '⏰', t: `<b>${nom}</b> (${m}): el período venció el ${fd(a.fecha_fin)}. Registrar prórroga o terminar servicio. ${link}`});
+      else if (c.diasFin <= uD) L.push({lv: 'amber', ic: '⏳', t: `<b>${nom}</b> (${m}): termina el ${fd(a.fecha_fin)} (en ${c.diasFin} días). Consultar prórroga o término. ${link}`});
+    }
+    if (activo && a.modalidad !== 'hora' && a.modalidad !== 'global' && !c.edpAbierto && c.pend >= c.base) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): ${nf(c.pend)} ${unidadMod(a.modalidad)} sin cobrar. <b>Confeccionar EDP</b>. ${link}`});
+    c.pers.filter(p => p.estado !== 'con_oc').forEach(p => {
+      const d = p.desde && p.desde <= hoy ? days(p.desde, hoy) : 0;
+      L.push({lv: d >= dOc ? 'red' : 'orange', ic: '📄', t: `<b>${nom}</b>: período ${p.n} (${p.tipo === 'inicial' ? 'arriendo inicial' : 'prórroga'}) adjudicado <b>sin OC/SolPed</b>${p.desde ? (p.desde > hoy ? ' (inicia el ' : ' (desde el ') + fd(p.desde) + ')' : ''}. Pedir la OC. ${link}`});
+    });
+    c.edps.forEach(e => {
+      if (e.estado === 'borrador') L.push({lv: 'blue', ic: '✉️', t: `<b>${nom}</b>: EDP N° ${e.n} (${clp(c.monto(e))}) <b>por enviar</b> al mandante. ${link}`});
+      else if (a.requiere_hes && e.hes_estado !== 'recibida' && e.hes_estado !== 'no_aplica') {
+        const d = e.fecha_envio ? days(e.fecha_envio, hoy) : null;
+        L.push({lv: d != null && d >= dHes ? 'red' : 'orange', ic: '🧾', t: `<b>${nom}</b>: EDP N° ${e.n} enviado${e.fecha_envio ? ' el ' + fd(e.fecha_envio) : ''}, <b>HES ${e.hes_estado === 'solicitada' ? 'solicitada, sin recibir' : 'por solicitar'}</b>. ${link}`});
+      } else if (!a.requiere_hes && !e.aprobacion) L.push({lv: 'orange', ic: '✅', t: `<b>${nom}</b>: EDP N° ${e.n} enviado, falta registrar la <b>aprobación del cliente</b>. ${link}`});
+      else if (!e.entregado_finanzas) L.push({lv: 'green', ic: '💼', t: `<b>${nom}</b>: EDP N° ${e.n} listo (${a.requiere_hes ? 'HES ' + esc(e.hes_numero || '') : 'aprobado'}). <b>Entregar a Finanzas</b>. ${link}`});
+    });
+    if ((a.estado === 'terminado') && (+a.desmovilizacion || 0) > 0 && !c.desmovCobrada)
+      L.push({lv: 'red', ic: '🚚', t: `<b>${nom}</b>: servicio terminado, <b>desmovilización ${clp(a.desmovilizacion)} sin cobrar</b>. Incluirla en el EDP final. ${link}`});
+  });
+  const ord = {red: 0, orange: 1, amber: 2, blue: 3, green: 4};
+  return L.sort((x, y) => ord[x.lv] - ord[y.lv]);
+}
+
+/* ---------------- Navegación ---------------- */
+function go() {
+  const h = (location.hash || '#inicio').slice(1);
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos')));
+  const v = $('view');
+  try {
+    if (h.startsWith('a-')) return vArriendo(h.slice(2));
+    ({inicio: vInicio, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
+  } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
+  const n = alertas().filter(x => x.lv === 'red' || x.lv === 'orange').length;
+  $('ncnt').hidden = !n; $('ncnt').textContent = n;
+}
+window.addEventListener('hashchange', go);
+
+/* ---------------- Vista: Inicio ---------------- */
+function vInicio() {
+  const L = alertas();
+  let vOC = 0, vPal = 0, env = 0, pendEnv = 0, hesP = 0, enFaena = 0;
+  D.arriendos.forEach(a => {
+    const c = calc(a);
+    vOC += c.vendidoOC + (c.pers.some(p => p.estado === 'con_oc') ? c.movTot : 0);
+    vPal += c.vendidoPal; env += c.enviado;
+    c.edps.forEach(e => { if (e.estado === 'borrador') pendEnv += c.monto(e); else if (a.requiere_hes && e.hes_estado !== 'recibida' && e.hes_estado !== 'no_aplica') hesP++; });
+    if (a.estado === 'palabra' || a.estado === 'con_oc') enFaena++;
+  });
+  $('view').innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="l">Vendido con OC</div><div class="v">${clp(vOC)}</div></div>
+    <div class="kpi o"><div class="l">Adjudicado sin OC</div><div class="v">${clp(vPal)}</div></div>
+    <div class="kpi g"><div class="l">Enviado en EDP</div><div class="v">${clp(env)}</div></div>
+    <div class="kpi"><div class="l">EDP por enviar</div><div class="v">${clp(pendEnv)}</div></div>
+    <div class="kpi r"><div class="l">HES pendientes</div><div class="v">${hesP}</div></div>
+    <div class="kpi"><div class="l">Arriendos activos</div><div class="v">${enFaena}</div></div>
+  </div>
+  <div class="card"><div class="row"><h2 style="margin:0">Qué hacer hoy</h2><span class="sp"></span><span class="muted small">${L.length} aviso(s) · ${fd(todayISO())}</span></div>
+  <div style="margin-top:10px">${L.length ? L.map(x => `<div class="al ${x.lv}"><div class="ic">${x.ic}</div><div class="tx">${x.t}</div></div>`).join('') : '<div class="msg ok">Todo al día. No hay avisos.</div>'}</div></div>`;
+}
+
+/* ---------------- Vista: Arriendos ---------------- */
+const estChip = e => ({cotizado: '<span class="chip">Cotizado</span>', palabra: '<span class="chip c-orange">Adjudicado sin OC</span>', con_oc: '<span class="chip c-blue">Con OC</span>', terminado: '<span class="chip c-amber">Terminado</span>', cerrado: '<span class="chip c-green">Cerrado</span>'}[e] || esc(e));
+let filtroArr = 'activos';
+function vArriendos() {
+  const lst = D.arriendos.filter(a => filtroArr === 'todos' || (filtroArr === 'activos' ? ['palabra', 'con_oc', 'cotizado'].includes(a.estado) : ['terminado', 'cerrado'].includes(a.estado)))
+    .sort((x, y) => (y.fecha_inicio || '').localeCompare(x.fecha_inicio || ''));
+  $('view').innerHTML = `
+  <div class="row" style="margin-bottom:12px">
+    <select id="fA" style="width:auto"><option value="activos">Activos</option><option value="terminados">Terminados / cerrados</option><option value="todos">Todos</option></select>
+    <span class="sp"></span><button class="pri" id="nuevoA">+ Nuevo arriendo / servicio</button>
+  </div>
+  <div class="grid">${lst.map(a => {
+    const c = calc(a), pct = c.base ? Math.max(0, Math.min(100, c.pend / c.base * 100)) : 0;
+    const cls = pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : '';
+    const fl = byId('flota', a.flota_id);
+    return `<div class="ac" data-id="${a.id}">
+      <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${estChip(a.estado)}</div>
+      <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
+      ${a.modalidad === 'global' ? '' : `<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
+      <div class="small">${a.modalidad === 'hora' ? 'Horas' : 'Días'} del período: <b>${nf(c.pend)} / ${nf(c.base)}</b></div>`}
+      <div class="small muted">${a.fecha_fin ? 'Vigente hasta ' + fd(a.fecha_fin) : ''}${c.diasFin != null && ['palabra', 'con_oc'].includes(a.estado) ? ` (${c.diasFin} días)` : ''}</div>
+    </div>`; }).join('') || '<div class="muted">No hay arriendos en esta vista.</div>'}</div>`;
+  $('fA').value = filtroArr;
+  $('fA').onchange = e => { filtroArr = e.target.value; vArriendos(); };
+  $('nuevoA').onclick = () => formArriendo();
+  document.querySelectorAll('.ac').forEach(el => el.onclick = () => { location.hash = 'a-' + el.dataset.id; });
+}
+
+function opts(list, val, lab, ph) { return (ph != null ? `<option value="">${esc(ph)}</option>` : '') + list.map(x => `<option value="${x.id}" ${x.id === val ? 'selected' : ''}>${esc(lab(x))}</option>`).join(''); }
+function modal(html) { $('mbox').innerHTML = html; $('modal').hidden = false; }
+function closeModal() { $('modal').hidden = true; $('mbox').innerHTML = ''; }
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+async function guardar(fn, okMsg) {
+  try { await fn(); await loadAll(); closeModal(); go(); if (okMsg) toast(okMsg); }
+  catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
+}
+const val = id => { const e = $(id); return e ? e.value.trim() : ''; };
+
+function formArriendo(a) {
+  const nuevo = !a; a = a || {modalidad: 'hora', base_cobro: P('base_ep_horas', 180), estado: 'palabra', requiere_hes: true, fecha_inicio: todayISO(), movilizacion: 0, desmovilizacion: 0};
+  const flota = D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo));
+  modal(`<h3>${nuevo ? 'Nuevo arriendo / servicio' : 'Editar arriendo'}</h3>
+  <div class="f">
+    <div><label>Equipo de la flota (opcional)</label><select id="fFl">${opts(flota, a.flota_id, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Servicio sin equipo —')}</select></div>
+    <div><label>Descripción</label><input id="fDe" value="${esc(a.descripcion || '')}" placeholder="Ej. Excavadora CAT 320 con operador"></div>
+    <div><label>Mandante</label><select id="fMa">${opts(D.mandantes, a.mandante_id, m => m.nombre, '— Elegir —')}</select></div>
+    <div><label>N° cotización</label><input id="fCo" value="${esc(a.cotizacion || '')}"></div>
+    <div><label>Modalidad de cobro</label><select id="fMo">${['hora', 'dia', 'mes', 'global'].map(m => `<option value="${m}" ${a.modalidad === m ? 'selected' : ''}>${{hora: 'Por hora (horómetro)', dia: 'Por día', mes: 'Por mes', global: 'Global'}[m]}</option>`).join('')}</select></div>
+    <div><label>Tarifa neta ($ por unidad)</label><input id="fTa" inputmode="numeric" value="${a.tarifa ?? ''}"></div>
+    <div><label>Base por EDP (h o días)</label><input id="fBa" inputmode="numeric" value="${a.base_cobro ?? ''}"></div>
+    <div><label>Movilización ($, 1er EDP)</label><input id="fMv" inputmode="numeric" value="${a.movilizacion ?? 0}"></div>
+    <div><label>Desmovilización ($, EDP final)</label><input id="fDm" inputmode="numeric" value="${a.desmovilizacion ?? 0}"></div>
+    <div><label>Operador</label><input id="fOp" value="${esc(a.operador || '')}"></div>
+    <div><label>Fecha inicio</label><input id="fFi" type="date" value="${a.fecha_inicio || ''}"></div>
+    <div><label>Vigente hasta (OC / período)</label><input id="fFf" type="date" value="${a.fecha_fin || ''}"></div>
+    <div><label>Estado</label><select id="fEs">${[['cotizado', 'Cotizado'], ['palabra', 'Adjudicado de palabra (sin OC)'], ['con_oc', 'Con OC / SolPed'], ['terminado', 'Terminado'], ['cerrado', 'Cerrado']].map(([k, l]) => `<option value="${k}" ${a.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    ${nuevo ? `<div><label>N° OC / SolPed (si ya llegó)</label><input id="fOc"></div>` : ''}
+    <div><label>¿Requiere HES?</label><select id="fHe"><option value="1" ${a.requiere_hes ? 'selected' : ''}>Sí (minera / empresa)</option><option value="0" ${!a.requiere_hes ? 'selected' : ''}>No (particular: aprobación)</option></select></div>
+  </div>
+  <div style="margin-top:10px"><label>Notas</label><textarea id="fNo">${esc(a.notas || '')}</textarea></div>
+  <div id="fWarn" class="small" style="color:var(--orange);margin-top:6px"></div>
+  <div class="mf">${!nuevo ? '<button class="dan" id="fDel">Eliminar</button><span class="sp"></span>' : ''}<button id="fCan">Cancelar</button><button class="pri" id="fOk">Guardar</button></div>`);
+  const fillFromFlota = () => {
+    const f = byId('flota', $('fFl').value); if (!f) return;
+    const t = byId('equipo_tipos', f.tipo_id);
+    if (!$('fDe').value) $('fDe').value = `${f.tipo ? f.tipo.charAt(0) + f.tipo.slice(1).toLowerCase() : ''} ${f.modelo || ''} (${f.patente || f.codigo})`.trim();
+    if (t && !$('fTa').value) { if (t.tarifa) $('fTa').value = Math.round(t.tarifa); $('fMo').value = t.unidad === 'día' ? 'dia' : t.unidad === 'mes' ? 'mes' : 'hora'; }
+    $('fWarn').textContent = t && !t.tarifa ? `El tipo "${t.nombre}" no tiene tarifa en el catálogo: escríbala a mano (puede guardarla luego en Catálogo).` : '';
+  };
+  $('fFl').onchange = fillFromFlota;
+  $('fMa').onchange = () => { const m = byId('mandantes', $('fMa').value); if (m) $('fHe').value = m.requiere_hes ? '1' : '0'; };
+  $('fCan').onclick = closeModal;
+  if (!nuevo) $('fDel').onclick = () => { if (confirm('¿Eliminar este arriendo con sus horómetros, períodos y EDP?')) guardar(() => del('arriendos', a.id).then(() => { location.hash = 'arriendos'; }), 'Arriendo eliminado'); };
+  $('fOk').onclick = () => {
+    if (!val('fDe')) return alert('Escriba una descripción.');
+    const o = {flota_id: val('fFl') || null, descripcion: val('fDe'), mandante_id: val('fMa') || null, cotizacion: val('fCo') || null, modalidad: val('fMo'),
+      tarifa: num(val('fTa')), base_cobro: num(val('fBa')), movilizacion: num(val('fMv')) || 0, desmovilizacion: num(val('fDm')) || 0, operador: val('fOp') || null,
+      fecha_inicio: val('fFi') || null, fecha_fin: val('fFf') || null, estado: val('fEs'), requiere_hes: val('fHe') === '1', notas: val('fNo') || null};
+    guardar(async () => {
+      if (nuevo) {
+        const r = await ins('arriendos', o);
+        const oc = val('fOc');
+        if (o.estado !== 'cotizado') await ins('periodos', {arriendo_id: r.id, n: 1, tipo: 'inicial', cantidad: o.modalidad === 'global' ? 1 : o.base_cobro, tarifa: o.tarifa, desde: o.fecha_inicio, hasta: o.fecha_fin, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
+        if (oc && o.estado === 'palabra') await upd('arriendos', r.id, {estado: 'con_oc'});
+        location.hash = 'a-' + r.id;
+      } else await upd('arriendos', a.id, o);
+    }, 'Guardado');
+  };
+}
+
+/* ---------------- Vista: detalle de arriendo ---------------- */
+let tabA = 'resumen';
+function vArriendo(id) {
+  const a = byId('arriendos', id);
+  if (!a) { $('view').innerHTML = '<div class="msg err">Arriendo no encontrado.</div>'; return; }
+  const c = calc(a), fl = byId('flota', a.flota_id), m = mandante(a);
+  const pct = c.base ? Math.max(0, Math.min(100, c.pend / c.base * 100)) : 0;
+  $('view').innerHTML = `
+  <div class="row" style="margin-bottom:10px"><a href="#arriendos">← Arriendos</a></div>
+  <div class="card">
+    <div class="row"><h2 style="margin:0">${esc(a.descripcion)}</h2>${estChip(a.estado)}<span class="sp"></span><button class="sm" id="edA">Editar</button></div>
+    <div class="muted small" style="margin-top:4px">${esc(m.nombre || '—')} · ${fl ? esc(fl.codigo + ' · ' + (fl.patente || '')) + ' · ' : ''}Cotización ${esc(a.cotizacion || '—')} · ${clp(a.tarifa)} / ${unidadMod(a.modalidad)} · Base ${nf(c.base)} ${unidadMod(a.modalidad)}${a.operador ? ' · Operador: ' + esc(a.operador) : ''}</div>
+    <div class="muted small">Inicio ${fd(a.fecha_inicio) || '—'} · Vigente hasta ${fd(a.fecha_fin) || '—'} · Mov. ${clp(a.movilizacion)} ${c.movCobrada ? '✔ cobrada' : '(1er EDP)'} · Desmov. ${clp(a.desmovilizacion)} ${c.desmovCobrada ? '✔ cobrada' : '(EDP final)'} · ${a.requiere_hes ? 'Con HES' : 'Sin HES (particular)'}</div>
+    ${a.notas ? `<div class="small" style="margin-top:6px">${esc(a.notas)}</div>` : ''}
+    <div class="row" style="margin-top:10px">
+      ${['palabra', 'con_oc'].includes(a.estado) ? '<button class="sm" id="bPro">➕ Prorrogar</button><button class="sm" id="bOc">📄 Registrar OC</button><button class="sm dan" id="bFin">⏹ Terminar servicio</button>' : ''}
+      <button class="sm pri" id="bEdp">+ Nuevo EDP</button>
+    </div>
+  </div>
+  <div class="tabs">${[['resumen', 'Resumen'], ['horo', a.modalidad === 'hora' ? 'Horómetros' : 'Días'], ['per', 'Períodos'], ['edp', 'EDP y HES']].map(([k, l]) => `<button data-t="${k}" class="${tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div id="tabc"></div>`;
+  document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tabA = b.dataset.t; vArriendo(id); });
+  $('edA').onclick = () => formArriendo(a);
+  $('bEdp').onclick = () => formEdp(a);
+  if ($('bPro')) { $('bPro').onclick = () => formProrroga(a); $('bOc').onclick = () => formOC(a); $('bFin').onclick = () => formTerminar(a); }
+  const T = $('tabc');
+  if (tabA === 'resumen') {
+    T.innerHTML = `<div class="kpis">
+      <div class="kpi"><div class="l">${a.modalidad === 'hora' ? 'Horas registradas' : 'Días transcurridos'}</div><div class="v">${nf(c.avance, 1)}</div></div>
+      <div class="kpi"><div class="l">En EDP</div><div class="v">${nf(c.enEdp, 1)}</div></div>
+      <div class="kpi ${c.pend >= c.base ? 'r' : ''}"><div class="l">Pendiente de cobro</div><div class="v">${nf(c.pend, 1)}</div></div>
+      <div class="kpi g"><div class="l">Enviado en EDP</div><div class="v">${clp(c.enviado)}</div></div>
+      <div class="kpi"><div class="l">Vendido con OC</div><div class="v">${clp(c.vendidoOC)}</div></div>
+      <div class="kpi o"><div class="l">Sin OC</div><div class="v">${clp(c.vendidoPal)}</div></div></div>
+      ${a.modalidad !== 'global' ? `<div class="card"><b>Avance del período actual</b><div class="bar"><i class="${pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : ''}" style="width:${pct}%"></i></div>
+      <div class="small">${nf(c.pend, 1)} de ${nf(c.base)} ${unidadMod(a.modalidad)}${c.pend >= c.base ? ' · <b>corresponde EDP</b>' : ` · faltan ${nf(c.base - c.pend, 1)}`}</div>
+      ${c.ultimo ? `<div class="small muted">Último reporte: ${fd(c.ultimo)} · horómetro ${nf(c.ultimoFin, 1)}</div>` : ''}</div>` : ''}`;
+  } else if (tabA === 'horo') {
+    if (a.modalidad !== 'hora') { T.innerHTML = `<div class="card">Este arriendo se cobra por ${unidadMod(a.modalidad)}. Los días se cuentan solos desde la fecha de inicio (${fd(a.fecha_inicio)}) hasta hoy o hasta el término.</div>`; return; }
+    const last = c.hor[c.hor.length - 1];
+    T.innerHTML = `<div class="card"><h2>Registrar horómetro</h2>
+      <div class="f"><div><label>Fecha</label><input type="date" id="hF" value="${todayISO()}"></div>
+      <div><label>N° report</label><input id="hR" value="${last && /^\d+$/.test(last.n_report || '') ? (+last.n_report + 1) : ''}"></div>
+      <div><label>Horómetro inicial</label><input id="hI" inputmode="decimal" value="${last ? last.h_fin : ''}"></div>
+      <div><label>Horómetro final</label><input id="hX" inputmode="decimal"></div>
+      <div><label>Observación</label><input id="hO" placeholder="Lluvia, mantención, sin operación…"></div></div>
+      <div class="row" style="margin-top:10px"><span id="hMsg" class="small"></span><span class="sp"></span><button class="pri" id="hOk">Guardar</button></div></div>
+      <div class="card tw"><table><thead><tr><th>Fecha</th><th>N° report</th><th class="n">Inicial</th><th class="n">Final</th><th class="n">Horas</th><th>Observación</th><th></th></tr></thead><tbody>
+      ${c.hor.slice().reverse().map(h => `<tr><td>${fd(h.fecha)}</td><td>${esc(h.n_report || '')}</td><td class="n">${nf(h.h_ini, 1)}</td><td class="n">${nf(h.h_fin, 1)}</td><td class="n"><b>${nf((+h.h_fin || 0) - (+h.h_ini || 0), 1)}</b></td><td class="small">${esc(h.obs || '')}</td><td><button class="sm dan" data-dh="${h.id}">✕</button></td></tr>`).join('')}
+      </tbody></table></div>`;
+    const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h`) : (last && i != null && i !== +last.h_fin ? `⚠ El inicial no coincide con el último final (${nf(last.h_fin, 1)}).` : ''); };
+    $('hI').oninput = chk; $('hX').oninput = chk;
+    $('hOk').onclick = () => {
+      const o = {arriendo_id: a.id, fecha: val('hF'), n_report: val('hR') || null, h_ini: num(val('hI')), h_fin: num(val('hX')), obs: val('hO') || null};
+      if (!o.fecha || o.h_ini == null || o.h_fin == null) return alert('Complete fecha, horómetro inicial y final (si no trabajó, ponga el mismo valor).');
+      if (o.h_fin < o.h_ini) return alert('El horómetro final no puede ser menor que el inicial.');
+      if (c.hor.some(h => h.fecha === o.fecha)) return alert('Ya hay un registro para esa fecha. Bórrelo primero si quiere corregirlo.');
+      guardar(() => ins('horometros', o), 'Horómetro guardado');
+    };
+    T.querySelectorAll('[data-dh]').forEach(b => b.onclick = () => { if (confirm('¿Borrar este registro?')) guardar(() => del('horometros', b.dataset.dh), 'Registro borrado'); });
+  } else if (tabA === 'per') {
+    T.innerHTML = `<div class="card tw"><table><thead><tr><th>N°</th><th>Tipo</th><th class="n">Cantidad</th><th class="n">Tarifa</th><th class="n">Monto</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>OC</th><th></th></tr></thead><tbody>
+      ${c.pers.map(p => `<tr><td>${p.n}</td><td>${p.tipo === 'inicial' ? 'Inicial' : 'Prórroga'}</td><td class="n">${nf(p.cantidad, 1)}</td><td class="n">${clp(p.tarifa)}</td><td class="n">${clp((+p.cantidad || 0) * (+p.tarifa || 0))}</td><td>${fd(p.desde)}</td><td>${fd(p.hasta)}</td><td>${p.estado === 'con_oc' ? '<span class="chip c-blue">Con OC</span>' : '<span class="chip c-orange">Sin OC</span>'}</td><td>${esc(p.oc || '')}</td><td><button class="sm" data-ep="${p.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="10" class="muted">Sin períodos.</td></tr>'}
+      </tbody></table></div>`;
+    T.querySelectorAll('[data-ep]').forEach(b => b.onclick = () => formPeriodo(a, byId('periodos', b.dataset.ep)));
+  } else if (tabA === 'edp') {
+    T.innerHTML = `<div class="card tw"><table><thead><tr><th>N°</th><th>Período</th><th class="n">Cant.</th><th class="n">Monto neto</th><th>Estado</th><th>Envío</th><th>${a.requiere_hes ? 'HES' : 'Aprobación'}</th><th>Finanzas</th><th></th></tr></thead><tbody>
+      ${c.edps.map(e => `<tr><td>${e.n}</td><td class="small">${fd(e.desde)} – ${fd(e.hasta)}</td><td class="n">${nf(e.cantidad, 1)}</td><td class="n">${clp(c.monto(e))}${+e.monto_mov ? '<div class="small muted">incl. mov.</div>' : ''}${+e.monto_desmov ? '<div class="small muted">incl. desmov.</div>' : ''}</td>
+      <td>${({borrador: '<span class="chip">Por enviar</span>', enviado: '<span class="chip c-blue">Enviado</span>', aprobado: '<span class="chip c-green">Aprobado</span>', observado: '<span class="chip c-red">Observado</span>'})[e.estado] || esc(e.estado)}</td>
+      <td>${fd(e.fecha_envio)}</td>
+      <td>${a.requiere_hes ? (e.hes_estado === 'recibida' ? '<span class="chip c-green">N° ' + esc(e.hes_numero || '') + '</span>' : e.hes_estado === 'solicitada' ? '<span class="chip c-orange">Solicitada</span>' : e.hes_estado === 'no_aplica' ? '—' : '<span class="chip">Por solicitar</span>') : esc(e.aprobacion || '—')}</td>
+      <td>${e.entregado_finanzas ? '✔ ' + fd(e.entregado_finanzas) : ''}</td><td><button class="sm" data-ee="${e.id}">Abrir</button></td></tr>`).join('') || '<tr><td colspan="9" class="muted">Sin EDP.</td></tr>'}
+      </tbody></table></div>`;
+    T.querySelectorAll('[data-ee]').forEach(b => b.onclick = () => formEdp(a, byId('edps', b.dataset.ee)));
+  }
+}
+
+function formPeriodo(a, p) {
+  modal(`<h3>Período ${p.n} · ${esc(a.descripcion)}</h3><div class="f">
+    <div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="pC" inputmode="decimal" value="${p.cantidad ?? ''}"></div>
+    <div><label>Tarifa</label><input id="pT" inputmode="numeric" value="${p.tarifa ?? ''}"></div>
+    <div><label>Desde</label><input type="date" id="pD" value="${p.desde || ''}"></div>
+    <div><label>Hasta</label><input type="date" id="pH" value="${p.hasta || ''}"></div>
+    <div><label>Estado</label><select id="pE"><option value="palabra" ${p.estado !== 'con_oc' ? 'selected' : ''}>Adjudicado sin OC</option><option value="con_oc" ${p.estado === 'con_oc' ? 'selected' : ''}>Con OC / SolPed</option></select></div>
+    <div><label>N° OC / SolPed</label><input id="pO" value="${esc(p.oc || '')}"></div></div>
+    <div style="margin-top:10px"><label>Notas</label><input id="pN" value="${esc(p.notas || '')}"></div>
+    <div class="mf"><button class="dan" id="pDel">Eliminar</button><span class="sp"></span><button id="pCan">Cancelar</button><button class="pri" id="pOk">Guardar</button></div>`);
+  $('pCan').onclick = closeModal;
+  $('pDel').onclick = () => { if (confirm('¿Eliminar este período?')) guardar(() => del('periodos', p.id), 'Período eliminado'); };
+  $('pOk').onclick = () => guardar(() => upd('periodos', p.id, {cantidad: num(val('pC')), tarifa: num(val('pT')), desde: val('pD') || null, hasta: val('pH') || null, estado: val('pO') ? 'con_oc' : val('pE'), oc: val('pO') || null, notas: val('pN') || null}), 'Período guardado');
+}
+
+function formProrroga(a) {
+  const c = calc(a), lastP = c.pers[c.pers.length - 1];
+  const desde = a.fecha_fin ? addDays(a.fecha_fin, 1) : todayISO();
+  modal(`<h3>Prorrogar · ${esc(a.descripcion)}</h3>
+    <p class="small muted">Crea el período ${(lastP ? lastP.n : 0) + 1}. Queda <b>adjudicado sin OC</b> hasta que registre la OC; los horómetros siguen sumando.</p>
+    <div class="f"><div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="rC" inputmode="decimal" value="${a.modalidad === 'global' ? 1 : c.base}"></div>
+    <div><label>Tarifa</label><input id="rT" inputmode="numeric" value="${a.tarifa ?? ''}"></div>
+    <div><label>Desde</label><input type="date" id="rD" value="${desde}"></div>
+    <div><label>Hasta</label><input type="date" id="rH" value="${addDays(desde, a.modalidad === 'dia' ? c.base - 1 : 29)}"></div>
+    <div><label>N° OC (si ya llegó)</label><input id="rO"></div></div>
+    <div class="mf"><button id="rCan">Cancelar</button><button class="pri" id="rOk">Crear prórroga</button></div>`);
+  $('rCan').onclick = closeModal;
+  $('rOk').onclick = () => guardar(async () => {
+    const oc = val('rO');
+    await ins('periodos', {arriendo_id: a.id, n: (lastP ? lastP.n : 0) + 1, tipo: 'prorroga', cantidad: num(val('rC')), tarifa: num(val('rT')), desde: val('rD') || null, hasta: val('rH') || null, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
+    await upd('arriendos', a.id, {fecha_fin: val('rH') || a.fecha_fin});
+  }, 'Prórroga creada');
+}
+
+function formOC(a) {
+  const pend = calc(a).pers.filter(p => p.estado !== 'con_oc');
+  if (!pend.length) return alert('Todos los períodos ya tienen OC. Para cambiar un N° de OC, edítelo en la pestaña Períodos.');
+  modal(`<h3>Registrar OC / SolPed</h3><div class="f">
+    <div><label>Período</label><select id="oP">${pend.map(p => `<option value="${p.id}">Período ${p.n} (${p.tipo === 'inicial' ? 'inicial' : 'prórroga'}) ${fd(p.desde)}</option>`).join('')}</select></div>
+    <div><label>N° OC / SolPed</label><input id="oN"></div></div>
+    <div class="mf"><button id="oCan">Cancelar</button><button class="pri" id="oOk">Guardar</button></div>`);
+  $('oCan').onclick = closeModal;
+  $('oOk').onclick = () => { if (!val('oN')) return alert('Escriba el N° de OC.'); guardar(async () => { await upd('periodos', val('oP'), {estado: 'con_oc', oc: val('oN')}); if (a.estado === 'palabra') await upd('arriendos', a.id, {estado: 'con_oc'}); }, 'OC registrada'); };
+}
+
+function formTerminar(a) {
+  const c = calc(a);
+  modal(`<h3>Terminar servicio · ${esc(a.descripcion)}</h3>
+    <p>Se marca como <b>terminado</b>. Luego cree el <b>EDP final</b>: incluirá lo pendiente${(+a.desmovilizacion || 0) && !c.desmovCobrada ? ` + la <b>desmovilización ${clp(a.desmovilizacion)}</b>` : ''}.</p>
+    <div class="f"><div><label>Fecha de término</label><input type="date" id="tF" value="${todayISO()}"></div></div>
+    <div class="mf"><button id="tCan">Cancelar</button><button class="pri" id="tOk">Terminar y crear EDP final</button></div>`);
+  $('tCan').onclick = closeModal;
+  $('tOk').onclick = async () => {
+    try { await upd('arriendos', a.id, {estado: 'terminado', fecha_fin: val('tF')}); await loadAll(); formEdp(byId('arriendos', a.id), null, true); }
+    catch (e) { alert(e.message); }
+  };
+}
+
+function formEdp(a, e, final) {
+  const c = calc(a), nuevo = !e;
+  if (nuevo) {
+    const last = c.edps[c.edps.length - 1];
+    const desde = last && last.hasta ? addDays(last.hasta, 1) : a.fecha_inicio;
+    const cant = a.modalidad === 'global' ? 1 : final ? Math.max(0, Math.round(c.pend * 10) / 10) : (c.pend >= c.base ? c.base : Math.max(0, Math.round(c.pend * 10) / 10));
+    const per = c.pers.filter(p => p.estado === 'con_oc').pop() || c.pers[c.pers.length - 1];
+    e = {n: (last ? last.n : 0) + 1, desde, hasta: final ? a.fecha_fin : todayISO(), cantidad: cant, tarifa: a.tarifa, monto_mov: c.movCobrada ? 0 : (+a.movilizacion || 0),
+      monto_desmov: final && !c.desmovCobrada ? (+a.desmovilizacion || 0) : 0, monto_otros: 0, estado: 'borrador', oc: per ? per.oc : '', periodo_id: per ? per.id : null,
+      hes_estado: a.requiere_hes ? 'por_solicitar' : 'no_aplica'};
+  }
+  modal(`<h3>${nuevo ? (final ? 'EDP final' : 'Nuevo EDP') : 'EDP N° ' + e.n} · ${esc(a.descripcion)}</h3>
+    <div class="f">
+      <div><label>N° EDP</label><input id="eN" inputmode="numeric" value="${e.n}"></div>
+      <div><label>Desde</label><input type="date" id="eD" value="${e.desde || ''}"></div>
+      <div><label>Hasta (corte)</label><input type="date" id="eH" value="${e.hasta || ''}"></div>
+      <div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="eC" inputmode="decimal" value="${e.cantidad ?? ''}"></div>
+      <div><label>Tarifa</label><input id="eT" inputmode="numeric" value="${e.tarifa ?? ''}"></div>
+      <div><label>Movilización $</label><input id="eMv" inputmode="numeric" value="${e.monto_mov ?? 0}"></div>
+      <div><label>Desmovilización $</label><input id="eDm" inputmode="numeric" value="${e.monto_desmov ?? 0}"></div>
+      <div><label>Otros $</label><input id="eOt" inputmode="numeric" value="${e.monto_otros ?? 0}"></div>
+      <div><label>N° OC</label><input id="eOc" value="${esc(e.oc || '')}"></div>
+      <div><label>Estado</label><select id="eE">${[['borrador', 'Por enviar'], ['enviado', 'Enviado'], ['aprobado', 'Aprobado'], ['observado', 'Observado']].map(([k, l]) => `<option value="${k}" ${e.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>Fecha de envío</label><input type="date" id="eF" value="${e.fecha_envio || ''}"></div>
+      ${a.requiere_hes ? `<div><label>Estado HES</label><select id="eHs">${[['por_solicitar', 'Por solicitar'], ['solicitada', 'Solicitada'], ['recibida', 'Recibida'], ['no_aplica', 'No aplica']].map(([k, l]) => `<option value="${k}" ${e.hes_estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>N° HES</label><input id="eHn" value="${esc(e.hes_numero || '')}"></div>
+      <div><label>Fecha HES</label><input type="date" id="eHf" value="${e.hes_fecha || ''}"></div>` :
+      `<div><label>Aprobación del cliente</label><input id="eAp" value="${esc(e.aprobacion || '')}" placeholder="Ej. correo 12-11 de J. Pérez"></div>`}
+      <div><label>Entregado a Finanzas</label><input type="date" id="eFi" value="${e.entregado_finanzas || ''}"></div>
+    </div>
+    <div class="big" style="margin-top:12px" id="eTot"></div>
+    <div style="margin-top:8px"><label>Notas</label><input id="eNo" value="${esc(e.notas || '')}"></div>
+    <div class="mf">${!nuevo ? '<button class="dan" id="eDel">Eliminar</button><span class="sp"></span>' : ''}<button id="eCan">Cancelar</button><button class="pri" id="eOk">Guardar</button></div>`);
+  const tot = () => { const ma = (num(val('eC')) || 0) * (num(val('eT')) || 0); const t = ma + (num(val('eMv')) || 0) + (num(val('eDm')) || 0) + (num(val('eOt')) || 0); $('eTot').textContent = `Neto ${clp(t)} · IVA ${clp(t * P('iva', 0.19))} · Total ${clp(t * (1 + P('iva', 0.19)))}`; };
+  ['eC', 'eT', 'eMv', 'eDm', 'eOt'].forEach(i => $(i).oninput = tot); tot();
+  if ($('eHn')) $('eHn').oninput = () => { if (val('eHn')) { $('eHs').value = 'recibida'; if (!val('eHf')) $('eHf').value = todayISO(); } };
+  $('eF').onchange = () => { if (val('eF') && val('eE') === 'borrador') $('eE').value = 'enviado'; };
+  $('eCan').onclick = () => { closeModal(); go(); };
+  if (!nuevo) $('eDel').onclick = () => { if (confirm('¿Eliminar este EDP?')) guardar(() => del('edps', e.id), 'EDP eliminado'); };
+  $('eOk').onclick = () => {
+    const o = {arriendo_id: a.id, periodo_id: e.periodo_id || null, n: num(val('eN')), desde: val('eD') || null, hasta: val('eH') || null, cantidad: num(val('eC')), tarifa: num(val('eT')),
+      monto_arriendo: (num(val('eC')) || 0) * (num(val('eT')) || 0), monto_mov: num(val('eMv')) || 0, monto_desmov: num(val('eDm')) || 0, monto_otros: num(val('eOt')) || 0,
+      oc: val('eOc') || null, estado: val('eE'), fecha_envio: val('eF') || null, entregado_finanzas: val('eFi') || null, notas: val('eNo') || null};
+    if (a.requiere_hes) Object.assign(o, {hes_estado: val('eHn') ? 'recibida' : val('eHs'), hes_numero: val('eHn') || null, hes_fecha: val('eHf') || null});
+    else Object.assign(o, {hes_estado: 'no_aplica', aprobacion: val('eAp') || null});
+    if (o.estado !== 'borrador' && !o.oc && !confirm('Este EDP no tiene N° de OC. ¿Guardar igual?')) return;
+    if (nuevo && c.edps.some(x => x.n === o.n)) return alert('Ya existe un EDP con ese número.');
+    guardar(() => nuevo ? ins('edps', o) : upd('edps', e.id, o), 'EDP guardado');
+  };
+}
+
+/* ---------------- Vista: Flota ---------------- */
+let qFl = '';
+function vFlota() {
+  const q = qFl.toLowerCase();
+  const L = D.flota.filter(f => !q || [f.codigo, f.patente, f.tipo, f.modelo].join(' ').toLowerCase().includes(q))
+    .sort((x, y) => (+y.activo - +x.activo) || (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo));
+  const enArr = id => D.arriendos.find(a => a.flota_id === id && ['palabra', 'con_oc'].includes(a.estado));
+  $('view').innerHTML = `<div class="row" style="margin-bottom:12px"><input id="qF" placeholder="Buscar por código, patente, tipo o modelo" style="max-width:340px" value="${esc(qFl)}"><span class="sp"></span><button class="pri" id="nF">+ Agregar equipo</button></div>
+  <div class="card tw"><table><thead><tr><th>Código</th><th>Patente</th><th>Tipo</th><th>Modelo</th><th class="hide-m">Tarifa catálogo</th><th>Situación</th></tr></thead><tbody>
+  ${L.map(f => { const t = byId('equipo_tipos', f.tipo_id), a = enArr(f.id); return `<tr class="click" data-f="${f.id}" style="${f.activo ? '' : 'opacity:.5'}"><td><b>${esc(f.codigo)}</b></td><td>${esc(f.patente || '')}</td><td>${esc(f.tipo || '')}</td><td>${esc(f.modelo || '')}</td>
+  <td class="hide-m">${t ? (t.tarifa ? clp(t.tarifa) + ' / ' + esc(t.unidad) : '<span class="chip c-amber">Pendiente de precio</span>') : '—'}</td>
+  <td>${!f.activo ? '<span class="chip">De baja</span>' : a ? '<span class="chip c-blue">Arrendado · ' + esc(mandante(a).nombre || '') + '</span>' : ''}${f.propio ? '' : ' <span class="chip c-orange">Terceros</span>'}</td></tr>`; }).join('')}
+  </tbody></table></div>`;
+  $('qF').oninput = e => { qFl = e.target.value; const p = e.target.selectionStart; vFlota(); $('qF').focus(); $('qF').setSelectionRange(p, p); };
+  $('nF').onclick = () => formFlota();
+  document.querySelectorAll('[data-f]').forEach(r => r.onclick = () => formFlota(byId('flota', r.dataset.f)));
+}
+function formFlota(f) {
+  const nuevo = !f; f = f || {propio: true, activo: true};
+  modal(`<h3>${nuevo ? 'Agregar equipo' : 'Equipo ' + esc(f.codigo)}</h3><div class="f">
+    <div><label>Código interno</label><input id="qC" value="${esc(f.codigo || '')}" placeholder="Ej. EXC-210"></div>
+    <div><label>Patente</label><input id="qP" value="${esc(f.patente || '')}"></div>
+    <div><label>Tipo</label><input id="qT" value="${esc(f.tipo || '')}" placeholder="Ej. EXCAVADORA"></div>
+    <div><label>Modelo</label><input id="qM" value="${esc(f.modelo || '')}"></div>
+    <div><label>Año</label><input id="qA" inputmode="numeric" value="${f.anio ?? ''}"></div>
+    <div><label>Tarifa del catálogo</label><select id="qTi">${opts(D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), f.tipo_id, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Ninguna / crear en Catálogo —')}</select></div>
+    <div><label>Propiedad</label><select id="qPr"><option value="1" ${f.propio ? 'selected' : ''}>Propio</option><option value="0" ${!f.propio ? 'selected' : ''}>De terceros (subarriendo)</option></select></div>
+    <div><label>Situación</label><select id="qAc"><option value="1" ${f.activo ? 'selected' : ''}>Activo</option><option value="0" ${!f.activo ? 'selected' : ''}>Dado de baja / vendido</option></select></div></div>
+    <div style="margin-top:10px"><label>Notas</label><input id="qN" value="${esc(f.notas || '')}"></div>
+    <div class="mf"><button id="qCan">Cancelar</button><button class="pri" id="qOk">Guardar</button></div>`);
+  $('qCan').onclick = closeModal;
+  $('qOk').onclick = () => {
+    if (!val('qC')) return alert('Escriba el código interno.');
+    const o = {codigo: val('qC'), patente: val('qP') || null, tipo: val('qT').toUpperCase() || null, modelo: val('qM') || null, anio: num(val('qA')), tipo_id: val('qTi') || null, propio: val('qPr') === '1', activo: val('qAc') === '1', notas: val('qN') || null};
+    guardar(() => nuevo ? ins('flota', o) : upd('flota', f.id, o), 'Equipo guardado');
+  };
+}
+
+/* ---------------- Vista: Catálogo ---------------- */
+let tabC = 'equipo_tipos';
+const CAT = {
+  equipo_tipos: {t: 'Equipos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['tarifa', 'Tarifa $', 'n'], ['consumo_lh', 'Diésel l/h', 'n'], ['balde_m3', 'Balde m³', 'n'], ['notas', 'Notas', 't']]},
+  personal: {t: 'Personal', cols: [['cargo', 'Cargo', 't'], ['sueldo', 'Sueldo líquido $', 'n'], ['valor_hh', 'Valor HH $', 'n'], ['notas', 'Notas', 't']]},
+  materiales: {t: 'Materiales e insumos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['precio', 'Precio $', 'n'], ['notas', 'Notas', 't']]},
+  parametros: {t: 'Parámetros', cols: [['clave', 'Clave', 'r'], ['descripcion', 'Descripción', 'r'], ['valor', 'Valor', 'n']]}
+};
+function vCatalogo() {
+  const C = CAT[tabC];
+  const rows = D[tabC].slice().sort((x, y) => String(x[C.cols[0][0]]).localeCompare(String(y[C.cols[0][0]])));
+  $('view').innerHTML = `<div class="tabs">${Object.entries(CAT).map(([k, v]) => `<button data-c="${k}" class="${tabC === k ? 'on' : ''}">${v.t}</button>`).join('')}</div>
+  <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa vacía = pendiente de precio.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
+  <div class="card tw"><table><thead><tr>${C.cols.map(c => `<th class="${c[2] === 'n' ? 'n' : ''}">${c[1]}</th>`).join('')}${tabC === 'equipo_tipos' ? '<th>Actualizado</th>' : ''}${tabC !== 'parametros' ? '<th></th>' : ''}</tr></thead><tbody>
+  ${rows.map(r => `<tr>${C.cols.map(c => c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
+  ${tabC === 'equipo_tipos' ? `<td class="small">${r.tarifa == null ? '<span class="chip c-amber">Sin precio</span>' : fd(r.tarifa_fecha) || ''}</td>` : ''}${tabC !== 'parametros' ? `<td><button class="sm dan" data-del="${r.id}">✕</button></td>` : ''}</tr>`).join('')}
+  </tbody></table></div>`;
+  document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); });
+  document.querySelectorAll('td input[data-k]').forEach(inp => inp.onchange = async () => {
+    const k = inp.dataset.k, v = inp.dataset.n === '1' ? num(inp.value) : (inp.value.trim() || null), o = {[k]: v};
+    try {
+      if (tabC === 'parametros') { await api(`parametros?clave=eq.${encodeURIComponent(inp.dataset.id)}`, {method: 'PATCH', body: JSON.stringify({valor: v, actualizado: new Date().toISOString()})}); }
+      else {
+        if (tabC === 'equipo_tipos' && k === 'tarifa') o.tarifa_fecha = todayISO();
+        if (tabC === 'personal' && k === 'sueldo' && v) { const r = byId('personal', inp.dataset.id); if (r && !r.valor_hh_manual) o.valor_hh = Math.round(v * (1 + P('leyes', 0.42)) / P('horas_mes', 180)); }
+        await upd(tabC, inp.dataset.id, o);
+      }
+      await loadAll(); toast('Guardado'); if (tabC !== 'parametros' && (k === 'tarifa' || k === 'sueldo')) vCatalogo();
+    } catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
+  });
+  document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('¿Eliminar este ítem del catálogo?')) guardar(() => del(tabC, b.dataset.del), 'Eliminado'); });
+  if ($('cAdd')) $('cAdd').onclick = () => {
+    const first = CAT[tabC].cols[0][0], name = prompt('Nombre del nuevo ítem:'); if (!name) return;
+    guardar(() => ins(tabC, {[first]: name.trim()}), 'Agregado');
+  };
+}
+
+/* ---------------- Vista: Mandantes ---------------- */
+function vMandantes() {
+  $('view').innerHTML = `<div class="row" style="margin-bottom:12px"><span class="sp"></span><button class="pri" id="nM">+ Agregar mandante</button></div>
+  <div class="card tw"><table><thead><tr><th>Mandante</th><th>¿Emite HES?</th><th>Contacto</th><th>Notas</th></tr></thead><tbody>
+  ${D.mandantes.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)).map(m => `<tr class="click" data-m="${m.id}"><td><b>${esc(m.nombre)}</b></td><td>${m.requiere_hes ? 'Sí' : 'No (particular)'}</td><td>${esc(m.contacto || '')}</td><td class="small">${esc(m.notas || '')}</td></tr>`).join('')}
+  </tbody></table></div>`;
+  $('nM').onclick = () => formMandante();
+  document.querySelectorAll('[data-m]').forEach(r => r.onclick = () => formMandante(byId('mandantes', r.dataset.m)));
+}
+function formMandante(m) {
+  const nuevo = !m; m = m || {requiere_hes: true};
+  modal(`<h3>${nuevo ? 'Nuevo mandante' : esc(m.nombre)}</h3><div class="f">
+    <div><label>Nombre</label><input id="mN" value="${esc(m.nombre || '')}"></div>
+    <div><label>¿Emite HES?</label><select id="mH"><option value="1" ${m.requiere_hes ? 'selected' : ''}>Sí (minera / empresa)</option><option value="0" ${!m.requiere_hes ? 'selected' : ''}>No (particular)</option></select></div>
+    <div><label>Contacto</label><input id="mC" value="${esc(m.contacto || '')}"></div></div>
+    <div style="margin-top:10px"><label>Notas</label><input id="mO" value="${esc(m.notas || '')}"></div>
+    <div class="mf"><button id="mCan">Cancelar</button><button class="pri" id="mOk">Guardar</button></div>`);
+  $('mCan').onclick = closeModal;
+  $('mOk').onclick = () => { if (!val('mN')) return alert('Escriba el nombre.'); const o = {nombre: val('mN'), requiere_hes: val('mH') === '1', contacto: val('mC') || null, notas: val('mO') || null}; guardar(() => nuevo ? ins('mandantes', o) : upd('mandantes', m.id, o), 'Mandante guardado'); };
+}
+
+/* ---------------- Inicio de sesión ---------------- */
+function showLogin(msg) { $('login').hidden = false; $('nav').hidden = true; $('logout').hidden = true; $('view').innerHTML = ''; $('lErr').textContent = msg || ''; }
+async function start() {
+  if (!await ensureSession()) return showLogin();
+  $('login').hidden = true; $('msg').innerHTML = '<div class="msg info">Cargando…</div>';
+  try {
+    let admin = false;
+    try { admin = !!(await api('rpc/es_admin', {method: 'POST', body: '{}'})); } catch (e) { if (e.message === 'SESSION') throw e; }
+    $('who').textContent = SESSION.email;
+    $('logout').hidden = false;
+    if (!admin) { $('msg').innerHTML = '<div class="msg info">Esta sección es solo para el administrador. <a href="index.html">Ir al panel gerencial</a></div>'; return; }
+    await loadAll();
+    if (!D.parametros.length) { $('msg').innerHTML = '<div class="msg err">Faltan las tablas en Supabase. Ejecute los scripts sql/01_estructura.sql y sql/02_datos.sql.</div>'; return; }
+    $('msg').innerHTML = ''; $('nav').hidden = false; go();
+  } catch (e) {
+    if (e.message === 'SESSION') return showLogin('Su sesión expiró. Ingrese nuevamente.');
+    $('msg').innerHTML = `<div class="msg err">${esc(e.message)}${/relation|does not exist|schema cache/i.test(e.message) ? '<br>Ejecute primero los scripts SQL en Supabase.' : ''}</div>`;
+  }
+}
+$('login').addEventListener('submit', async e => {
+  e.preventDefault(); $('lErr').textContent = ''; $('lBtn').disabled = true;
+  try { SESSION = await authReq({email: val('lEmail'), password: $('lPass').value}, 'password'); saveSession(); $('lPass').value = ''; await start(); }
+  catch (err) { $('lErr').textContent = err.message; } finally { $('lBtn').disabled = false; }
+});
+$('logout').onclick = async () => { try { await fetch(`${SUPABASE_URL}/auth/v1/logout`, {method: 'POST', headers: {apikey: SUPABASE_KEY, Authorization: 'Bearer ' + SESSION.access_token}}); } catch (e) {} SESSION = null; saveSession(); location.reload(); };
+start();
+})();
+</script>
+</body>
+</html>
