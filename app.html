@@ -103,7 +103,9 @@ label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bot
   .hide-m{display:none}
   .hero{padding:14px 16px}.hero h2{font-size:17px}
 }
-@media print{header,nav,button{display:none!important}main{padding:0}body{background:#fff}}
+@media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
+.ofwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:6px}
+a.btn{display:inline-block}
 </style>
 </head>
 <body>
@@ -112,6 +114,7 @@ label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bot
   <div class="ht"><h1>Gestión de Arriendos y Servicios</h1><div class="sub" id="who"></div></div>
   <nav id="nav" hidden>
     <a href="#inicio" data-v="inicio">🔔 Inicio<span class="cnt" id="ncnt" hidden></span></a>
+    <a href="#cotizar" data-v="cotizar">📝 Cotizar</a>
     <a href="#arriendos" data-v="arriendos">🚜 Arriendos</a>
     <a href="#flota" data-v="flota">🏗️ Flota</a>
     <a href="#catalogo" data-v="catalogo">💲 Catálogo</a>
@@ -195,6 +198,8 @@ const TABLES = ['parametros', 'mandantes', 'equipo_tipos', 'personal', 'material
 async function loadAll() {
   const res = await Promise.all(TABLES.map(t => api(`${t}?select=*${t === 'horometros' ? '&order=fecha.asc' : ''}&limit=10000`)));
   TABLES.forEach((t, i) => { D[t] = res[i] || []; });
+  try { const [c, a] = await Promise.all([api('cotizaciones?select=*&limit=10000'), api('ajustes?select=*')]); D.cotizaciones = c || []; D.ajustesMap = {}; (a || []).forEach(x => { D.ajustesMap[x.clave] = x.valor; }); D.sinCot = false; }
+  catch (e) { if (e.message === 'SESSION') throw e; D.cotizaciones = []; D.ajustesMap = {}; D.sinCot = true; }
   D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
@@ -277,11 +282,13 @@ function alertas() {
 /* ---------------- Navegación ---------------- */
 function go() {
   const h = (location.hash || '#inicio').slice(1);
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos')));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^cd?-/.test(h) && a.dataset.v === 'cotizar')));
   const v = $('view');
   try {
     if (h.startsWith('a-')) return vArriendo(h.slice(2));
-    ({inicio: vInicio, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
+    if (h.startsWith('cd-')) return docCot(h.slice(3));
+    if (h.startsWith('c-')) return vCot(h.slice(2));
+    ({inicio: vInicio, cotizar: vCotizaciones, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   const n = alertas().filter(x => x.lv === 'red' || x.lv === 'orange').length;
   $('ncnt').hidden = !n; $('ncnt').textContent = n;
@@ -653,9 +660,15 @@ const CAT = {
   parametros: {t: 'Parámetros', cols: [['clave', 'Clave', 'r'], ['descripcion', 'Descripción', 'r'], ['valor', 'Valor', 'n']]}
 };
 function vCatalogo() {
+  const tabsH = `<div class="tabs">${Object.entries(CAT).map(([k, v]) => `<button data-c="${k}" class="${tabC === k ? 'on' : ''}">${v.t}</button>`).join('')}<button data-c="empresa" class="${tabC === 'empresa' ? 'on' : ''}">Empresa y firma</button></div>`;
+  if (tabC === 'empresa') {
+    $('view').innerHTML = tabsH + (D.sinCot ? '<div class="msg err">Ejecute sql/03_cotizador.sql en Supabase para habilitar esta sección.</div>' : vEmpresa());
+    document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); });
+    if (!D.sinCot) bindEmpresa(); return;
+  }
   const C = CAT[tabC];
   const rows = D[tabC].slice().sort((x, y) => String(x[C.cols[0][0]]).localeCompare(String(y[C.cols[0][0]])));
-  $('view').innerHTML = `<div class="tabs">${Object.entries(CAT).map(([k, v]) => `<button data-c="${k}" class="${tabC === k ? 'on' : ''}">${v.t}</button>`).join('')}</div>
+  $('view').innerHTML = `${tabsH}
   <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa vacía = pendiente de precio.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
   <div class="card tw"><table><thead><tr>${C.cols.map(c => `<th class="${c[2] === 'n' ? 'n' : ''}">${c[1]}</th>`).join('')}${tabC === 'equipo_tipos' ? '<th>Actualizado</th>' : ''}${tabC !== 'parametros' ? '<th></th>' : ''}</tr></thead><tbody>
   ${rows.map(r => `<tr>${C.cols.map(c => c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
@@ -700,6 +713,431 @@ function formMandante(m) {
     <div class="mf"><button id="mCan">Cancelar</button><button class="pri" id="mOk">Guardar</button></div>`);
   $('mCan').onclick = closeModal;
   $('mOk').onclick = () => { if (!val('mN')) return alert('Escriba el nombre.'); const o = {nombre: val('mN'), requiere_hes: val('mH') === '1', contacto: val('mC') || null, notas: val('mO') || null}; guardar(() => nuevo ? ins('mandantes', o) : upd('mandantes', m.id, o), 'Mandante guardado'); };
+}
+
+/* ================================================================
+   COTIZADOR
+   ================================================================ */
+const AJ = k => (D.ajustesMap || {})[k] || '';
+const codigoCot = c => AJ('codigo_prefijo') + c.numero;
+const nCot = c => `${c.numero} rev_${c.rev}`;
+const estCot = e => ({borrador: '<span class="chip">Borrador</span>', enviada: '<span class="chip c-blue">Enviada</span>', adjudicada: '<span class="chip c-green">Adjudicada</span>', perdida: '<span class="chip c-red">Perdida</span>', anulada: '<span class="chip">Anulada</span>'}[e] || esc(e));
+const FMES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const fLarga = s => s ? `${+s.slice(8, 10)} de ${FMES[+s.slice(5, 7) - 1]} de ${s.slice(0, 4)}` : '';
+function totCot(c) {
+  let neto = 0, costo = 0, sinCosto = 0;
+  (c.items || []).forEach(it => {
+    if (it.tipo !== 'i') return;
+    const t = (+it.cantidad || 0) * (+it.precio || 0); neto += t;
+    if (it.costo != null && it.costo !== '') costo += (+it.cantidad || 0) * (+it.costo || 0); else if (t) sinCosto += t;
+  });
+  const iva = neto * P('iva', 0.19), conCosto = neto - sinCosto, util = conCosto - costo;
+  return {neto, iva, total: neto + iva, costo, util, margen: conCosto ? util / conCosto : 0, sinCosto};
+}
+function nextNumero() {
+  let m = 0;
+  D.cotizaciones.forEach(c => { if (c.numero > m) m = c.numero; });
+  D.arriendos.forEach(a => { const n = parseInt(a.cotizacion || '', 10); if (n > m && n < 100000) m = n; });
+  return m + 1;
+}
+
+const NOTA_DEF = v => `Los valores indicados son netos y no incluyen IVA.\nValidez de la oferta: ${v} días.`;
+
+/* ---------- Lista ---------- */
+let filtroCot = 'abiertas';
+function vCotizaciones() {
+  if (D.sinCot) { $('view').innerHTML = '<div class="msg err">Falta crear la tabla de cotizaciones. Ejecute <b>sql/03_cotizador.sql</b> en el SQL Editor de Supabase y recargue.</div>'; return; }
+  const L = D.cotizaciones.filter(c => filtroCot === 'todas' || (filtroCot === 'abiertas' ? ['borrador', 'enviada'].includes(c.estado) : c.estado === filtroCot))
+    .sort((x, y) => y.numero - x.numero || y.rev - x.rev);
+  let env = 0, adj = 0, nEnv = 0;
+  D.cotizaciones.forEach(c => { const t = totCot(c).neto; if (c.estado === 'enviada') { env += t; nEnv++; } if (c.estado === 'adjudicada') adj += t; });
+  const cerr = D.cotizaciones.filter(c => ['adjudicada', 'perdida'].includes(c.estado)), tasa = cerr.length ? cerr.filter(c => c.estado === 'adjudicada').length / cerr.length : null;
+  $('view').innerHTML = `
+  <div class="kpis">
+    <div class="kpi"><div class="l">Enviadas esperando respuesta</div><div class="v">${nEnv} · ${clp(env)}</div></div>
+    <div class="kpi g"><div class="l">Adjudicadas (neto)</div><div class="v">${clp(adj)}</div></div>
+    <div class="kpi o"><div class="l">Tasa de adjudicación</div><div class="v">${tasa == null ? '—' : nf(tasa * 100) + '%'}</div></div>
+  </div>
+  <div class="row" style="margin-bottom:12px">
+    <select id="fC" style="width:auto"><option value="abiertas">Borradores y enviadas</option><option value="adjudicada">Adjudicadas</option><option value="perdida">Perdidas</option><option value="todas">Todas</option></select>
+    <span class="sp"></span><button class="pri" id="nC">+ Nueva cotización</button>
+  </div>
+  <div class="card tw"><table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Referencia</th><th class="n">Neto</th><th class="n hide-m">Utilidad</th><th>Estado</th></tr></thead><tbody>
+  ${L.map(c => { const t = totCot(c); return `<tr class="click" data-c="${c.id}"><td><b>${esc(nCot(c))}</b></td><td>${fd(c.fecha)}</td><td>${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}</td><td class="small">${esc(c.referencia || '')}</td><td class="n">${clp(t.neto)}</td><td class="n hide-m small">${t.costo ? clp(t.util) + ' (' + nf(t.margen * 100) + '%)' : '<span class="muted">sin costo</span>'}</td><td>${estCot(c.estado)}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No hay cotizaciones en esta vista.</td></tr>'}
+  </tbody></table></div>`;
+  $('fC').value = filtroCot;
+  $('fC').onchange = e => { filtroCot = e.target.value; vCotizaciones(); };
+  $('nC').onclick = () => nuevaCot();
+  document.querySelectorAll('[data-c]').forEach(r => r.onclick = () => { location.hash = 'c-' + r.dataset.c; });
+}
+
+function nuevaCot() {
+  modal(`<h3>Nueva cotización</h3>
+  <div class="f"><div><label>Mandante / cliente</label><select id="ncM">${opts(D.mandantes.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), null, m => m.nombre, '— Elegir —')}<option value="__nuevo">➕ Agregar mandante nuevo…</option></select></div>
+  <div><label>N° cotización</label><input id="ncN" inputmode="numeric" value="${nextNumero()}"></div>
+  <div><label>Validez (días)</label><input id="ncV" inputmode="numeric" value="10"></div></div>
+  <div style="margin-top:10px"><label>Referencia (nombre del servicio)</label><input id="ncR" placeholder="Ej. Servicio de arriendo de excavadora"></div>
+  <div class="mf"><button id="ncCan">Cancelar</button><button class="pri" id="ncOk">Crear</button></div>`);
+  $('ncM').onchange = async () => {
+    if ($('ncM').value !== '__nuevo') { const m = byId('mandantes', $('ncM').value); if (m) $('ncV').value = m.requiere_hes ? 10 : 5; return; }
+    const nombre = (prompt('Nombre del mandante nuevo:') || '').trim(); if (!nombre) { $('ncM').value = ''; return; }
+    const hes = confirm(`¿"${nombre}" emite HES?\n\nAceptar = Sí (minera / empresa)\nCancelar = No (particular)`);
+    try { const m = await ins('mandantes', {nombre, requiere_hes: hes}); D.mandantes.push(m); const o = document.createElement('option'); o.value = m.id; o.textContent = m.nombre; $('ncM').insertBefore(o, $('ncM').lastElementChild); $('ncM').value = m.id; $('ncV').value = hes ? 10 : 5; }
+    catch (e) { alert(e.message); $('ncM').value = ''; }
+  };
+  $('ncCan').onclick = closeModal;
+  $('ncOk').onclick = () => {
+    const n = num(val('ncN')); if (!n) return alert('Escriba el N° de cotización.');
+    if (D.cotizaciones.some(c => c.numero === n && c.rev === 0)) return alert('Ese N° ya existe. Use otro o cree una nueva revisión desde la cotización existente.');
+    const m = byId('mandantes', val('ncM')), v = num(val('ncV')) || 10;
+    const o = {numero: n, rev: 0, fecha: todayISO(), mandante_id: m ? m.id : null, cliente: m ? m.nombre : null, referencia: val('ncR') || 'Servicio de arriendo de equipo', validez_dias: v, nota: NOTA_DEF(v),
+      items: [{tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}, {tipo: 'g', item: 'B', desc: 'Movilización y desmovilización del equipo'}], gg: P('gg', 0), utilidad: P('utilidad', 0.2), estado: 'borrador'};
+    guardar(async () => { const r = await ins('cotizaciones', o); location.hash = 'c-' + r.id; }, 'Cotización creada');
+  };
+}
+
+/* ---------- Editor ---------- */
+let COT = null, verInternos = true;
+function vCot(id) {
+  if (D.sinCot) return vCotizaciones();
+  const src = byId('cotizaciones', id);
+  if (!src) { $('view').innerHTML = '<div class="msg err">Cotización no encontrada.</div>'; return; }
+  if (!COT || COT.id !== id) COT = JSON.parse(JSON.stringify(src));
+  const c = COT;
+  $('view').innerHTML = `
+  <div class="row" style="margin-bottom:10px"><a href="#cotizar">← Cotizaciones</a><span class="sp"></span>
+    <label class="row small" style="margin:0;cursor:pointer;gap:6px"><input type="checkbox" id="vInt" style="width:auto" ${verInternos ? 'checked' : ''}> Ver costos y utilidad</label></div>
+  <div class="card">
+    <div class="row"><h2 style="margin:0">Cotización N° ${esc(nCot(c))}</h2>${estCot(c.estado)}<span class="sp"></span>
+      <button class="sm" id="cDoc">📄 Oferta para el cliente</button><button class="sm pri" id="cSave">💾 Guardar</button></div>
+    <div class="f" style="margin-top:12px">
+      <div><label>N°</label><input id="cN" inputmode="numeric" value="${c.numero}"></div>
+      <div><label>Revisión</label><input id="cR" inputmode="numeric" value="${c.rev}"></div>
+      <div><label>Fecha</label><input type="date" id="cF" value="${c.fecha || ''}"></div>
+      <div><label>Estado</label><select id="cE">${[['borrador', 'Borrador'], ['enviada', 'Enviada'], ['adjudicada', 'Adjudicada'], ['perdida', 'Perdida'], ['anulada', 'Anulada']].map(([k, l]) => `<option value="${k}" ${c.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>Mandante</label><select id="cM">${opts(D.mandantes.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), c.mandante_id, m => m.nombre, '— Elegir —')}</select></div>
+      <div><label>Validez (días)</label><input id="cV" inputmode="numeric" value="${c.validez_dias ?? ''}"></div>
+    </div>
+    <div style="margin-top:10px"><label>Referencia (nombre del servicio, sale en la oferta)</label><input id="cRef" value="${esc(c.referencia || '')}"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2 style="margin:0">Oferta económica</h2><span class="sp"></span>
+      <button class="sm" id="aEq">🚜 + Equipo del catálogo</button><button class="sm" id="aIt">+ Ítem</button><button class="sm" id="aGr">+ Grupo</button></div>
+    <div class="tw" style="margin-top:10px"><table id="tIt"><thead><tr><th style="width:60px">Ítem</th><th>Descripción</th><th style="width:80px">Unidad</th><th class="n" style="width:90px">Cantidad</th><th class="n" style="width:120px">Precio unit.</th><th class="n">Total neto</th>
+      <th class="n int" style="width:120px">Costo unit.</th><th class="n int">Utilidad</th><th style="width:118px"></th></tr></thead><tbody></tbody></table></div>
+    <div id="cTot" style="margin-top:12px"></div>
+    <div class="row small" style="margin-top:8px"><label class="row" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cIva" style="width:auto" ${c.mostrar_iva ? 'checked' : ''}> Mostrar IVA y total con IVA en la oferta del cliente</label></div>
+  </div>
+
+  <div class="card"><h2>Bajo la tabla</h2>
+    <label>Notas (salen debajo de la oferta)</label><textarea id="tNo" style="min-height:70px">${esc(c.nota || '')}</textarea>
+    <div class="row" style="margin-top:8px"><label class="row" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cFir" style="width:auto" ${c.con_firma !== false ? 'checked' : ''}> Incluir mi firma, nombre y cargo</label></div>
+    <div style="height:8px"></div><label>Notas internas (no salen en la oferta)</label><input id="tIn" value="${esc(c.notas || '')}">
+  </div>
+
+  <div class="card row">
+    <button class="dan sm" id="cDel">Eliminar</button><button class="sm" id="cRev">Nueva revisión</button><button class="sm" id="cDup">Duplicar como nueva</button>
+    <span class="sp"></span>
+    ${c.arriendo_id ? `<a class="btn sm" href="#a-${c.arriendo_id}" style="text-decoration:none">🚜 Ver arriendo</a>` : `<button class="sm" id="cArr">✅ Adjudicada: pasar a arriendo</button>`}
+    <button class="sm" id="cDoc2">📄 Oferta para el cliente</button><button class="pri sm" id="cSave2">💾 Guardar</button>
+  </div>`;
+  renderItems();
+  const bind = (id, k, f) => { $(id).oninput = $(id).onchange = () => { c[k] = f ? f($(id).value) : $(id).value; }; };
+  bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas');
+  $('cV').oninput = () => { const v = num($('cV').value); c.validez_dias = v; if (v && /Validez de la oferta: \d+ días/.test(c.nota || '')) { c.nota = c.nota.replace(/Validez de la oferta: \d+ días/, `Validez de la oferta: ${v} días`); $('tNo').value = c.nota; } };
+  $('cM').onchange = () => { c.mandante_id = $('cM').value || null; const m = byId('mandantes', c.mandante_id); c.cliente = m ? m.nombre : null; };
+  $('cFir').onchange = () => { c.con_firma = $('cFir').checked; };
+  $('cIva').onchange = () => { c.mostrar_iva = $('cIva').checked; };
+  $('vInt').onchange = () => { verInternos = $('vInt').checked; renderItems(); };
+  $('aIt').onclick = () => { const g = lastGroup(); c.items.push({tipo: 'i', item: nextItemCode(g), desc: '', unidad: 'gl', cantidad: 1, precio: null, costo: null}); renderItems(); };
+  $('aGr').onclick = () => { const letra = String.fromCharCode(65 + c.items.filter(i => i.tipo === 'g').length); c.items.push({tipo: 'g', item: letra, desc: 'Nuevo grupo'}); renderItems(); };
+  $('aEq').onclick = () => asistenteEquipo();
+  $('cSave').onclick = $('cSave2').onclick = () => saveCot();
+  $('cDoc').onclick = $('cDoc2').onclick = async () => { if (await saveCot(true)) location.hash = 'cd-' + c.id; };
+  $('cDel').onclick = () => { if (confirm(`¿Eliminar la cotización ${nCot(c)}?`)) guardar(async () => { await del('cotizaciones', c.id); COT = null; location.hash = 'cotizar'; }, 'Cotización eliminada'); };
+  $('cRev').onclick = () => copiaCot(c.numero, Math.max(...D.cotizaciones.filter(x => x.numero === c.numero).map(x => x.rev)) + 1);
+  $('cDup').onclick = () => copiaCot(nextNumero(), 0);
+  if ($('cArr')) $('cArr').onclick = () => pasarArriendo();
+}
+function lastGroup() { const g = COT.items.filter(i => i.tipo === 'g'); return g.length ? g[g.length - 1].item : ''; }
+function nextItemCode(g) { const n = COT.items.filter(i => i.tipo === 'i' && String(i.item || '').startsWith(g + '.')).length; return g ? `${g}.${n + 1}` : String(COT.items.filter(i => i.tipo === 'i').length + 1); }
+function renderItems() {
+  const c = COT, tb = document.querySelector('#tIt tbody'); if (!tb) return;
+  document.querySelectorAll('#tIt .int').forEach(e => e.hidden = !verInternos);
+  tb.innerHTML = c.items.map((it, i) => it.tipo === 'g'
+    ? `<tr style="background:var(--pale)"><td><input data-i="${i}" data-k="item" value="${esc(it.item)}" style="font-weight:700"></td><td colspan="${verInternos ? 7 : 5}"><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" style="font-weight:700"></td><td class="n">${btnsItem(i)}</td></tr>`
+    : `<tr><td><input data-i="${i}" data-k="item" value="${esc(it.item)}"></td><td><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" placeholder="Descripción"></td><td><input data-i="${i}" data-k="unidad" value="${esc(it.unidad || '')}"></td>
+      <td class="n"><input data-i="${i}" data-k="cantidad" data-n="1" inputmode="decimal" value="${it.cantidad ?? ''}" style="text-align:right"></td>
+      <td class="n"><input data-i="${i}" data-k="precio" data-n="1" inputmode="numeric" value="${it.precio ?? ''}" style="text-align:right" placeholder="$"></td>
+      <td class="n"><b data-tot="${i}"></b></td>
+      ${verInternos ? `<td class="n"><input data-i="${i}" data-k="costo" data-n="1" inputmode="numeric" value="${it.costo ?? ''}" style="text-align:right" placeholder="—"></td><td class="n small" data-ut="${i}"></td>` : ''}
+      <td class="n">${it.tipo === 'i' ? `<button class="sm" data-apu="${i}" title="Calcular costo y precio (APU)">🧮</button>` : ''}${btnsItem(i)}</td></tr>`).join('') || `<tr><td colspan="9" class="muted">Agregue ítems con los botones de arriba.</td></tr>`;
+  tb.querySelectorAll('input[data-k]').forEach(inp => inp.oninput = () => { const it = c.items[+inp.dataset.i]; it[inp.dataset.k] = inp.dataset.n ? num(inp.value) : inp.value; updTot(); });
+  tb.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; if (i > 0) { [c.items[i - 1], c.items[i]] = [c.items[i], c.items[i - 1]]; renderItems(); } });
+  tb.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.dn; if (i < c.items.length - 1) { [c.items[i + 1], c.items[i]] = [c.items[i], c.items[i + 1]]; renderItems(); } });
+  tb.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { c.items.splice(+b.dataset.rm, 1); renderItems(); });
+  tb.querySelectorAll('[data-apu]').forEach(b => b.onclick = () => formAPU(+b.dataset.apu));
+  updTot();
+}
+const btnsItem = i => `<button class="sm" data-up="${i}" title="Subir">↑</button><button class="sm" data-dn="${i}" title="Bajar">↓</button><button class="sm dan" data-rm="${i}" title="Quitar">✕</button>`;
+function updTot() {
+  const c = COT, t = totCot(c);
+  c.items.forEach((it, i) => {
+    if (it.tipo !== 'i') return;
+    const tt = (+it.cantidad || 0) * (+it.precio || 0), e = document.querySelector(`[data-tot="${i}"]`); if (e) e.textContent = clp(tt);
+    const u = document.querySelector(`[data-ut="${i}"]`);
+    if (u) u.innerHTML = it.costo != null && it.costo !== '' && tt ? `${clp(tt - (+it.cantidad || 0) * (+it.costo || 0))}<div class="muted">${nf((1 - (+it.costo || 0) / (+it.precio || 1)) * 100)}% s/precio</div>` : '<span class="muted">—</span>';
+  });
+  const b = document.getElementById('cTot'); if (!b) return;
+  b.innerHTML = `<div class="kpis" style="margin:0">
+    <div class="kpi"><div class="l">Total neto</div><div class="v">${clp(t.neto)}</div></div>
+    <div class="kpi"><div class="l">IVA ${nf(P('iva', 0.19) * 100)}%</div><div class="v">${clp(t.iva)}</div></div>
+    <div class="kpi g"><div class="l">Total con IVA</div><div class="v">${clp(t.total)}</div></div>
+    ${verInternos ? `<div class="kpi o"><div class="l">Costo estimado</div><div class="v">${t.costo ? clp(t.costo) : '—'}</div></div>
+    <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">Utilidad estimada</div><div class="v">${t.costo ? clp(t.util) + ' · ' + nf(t.margen * 100) + '%' : '—'}</div></div>` : ''}
+  </div>${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
+}
+async function saveCot(silent) {
+  const c = COT;
+  if (!c.numero) { alert('Falta el N° de cotización.'); return false; }
+  if (D.cotizaciones.some(x => x.id !== c.id && x.numero === c.numero && x.rev === c.rev)) { alert(`Ya existe la cotización ${c.numero} rev_${c.rev}.`); return false; }
+  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas']
+    .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
+  o.actualizado = new Date().toISOString();
+  if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
+  try { const r = await upd('cotizaciones', c.id, o); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; COT = JSON.parse(JSON.stringify(r)); if (!silent) toast('Cotización guardada'); return true; }
+  catch (e) { if (e.message === 'SESSION') { showLogin('Su sesión expiró.'); return false; } alert(e.message); return false; }
+}
+function copiaCot(numero, rev) {
+  const c = COT, o = JSON.parse(JSON.stringify(c));
+  ['id', 'creado', 'actualizado', 'arriendo_id', 'fecha_envio'].forEach(k => delete o[k]);
+  Object.assign(o, {numero, rev, fecha: todayISO(), estado: 'borrador'});
+  if (!confirm(`Se creará la cotización ${numero} rev_${rev} como copia de esta. ¿Continuar?`)) return;
+  guardar(async () => { const r = await ins('cotizaciones', o); COT = null; location.hash = 'c-' + r.id; }, `Cotización ${numero} rev_${rev} creada`);
+}
+
+/* ---------- APU de un ítem ---------- */
+function formAPU(i) {
+  const it = COT.items[i], gg0 = COT.gg ?? P('gg', 0), ut0 = COT.utilidad ?? P('utilidad', 0.2);
+  let rows = JSON.parse(JSON.stringify(it.apu || []));
+  const ops = D.personal.slice().sort((x, y) => x.cargo.localeCompare(y.cargo)), tipos = D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre));
+  modal(`<h3>Costo y precio · ${esc(it.item)} ${esc(it.desc || '')}</h3>
+  <p class="small muted">Arme el costo total del ítem (como un APU). La app divide por la cantidad del ítem (<b>${nf(it.cantidad, 2)} ${esc(it.unidad || '')}</b>) y aplica GG y utilidad para sugerir el precio.</p>
+  <div class="row" style="margin-bottom:8px;gap:6px">
+    <select id="apT" style="width:auto;max-width:220px">${opts(tipos, null, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '+ Equipo…')}</select>
+    <select id="apO" style="width:auto;max-width:220px">${opts(ops, null, p => `${p.cargo} · ${clp(p.valor_hh)}/HH`, '+ Personal…')}</select>
+    <button class="sm" id="apAl">+ Alimentación</button><button class="sm" id="apAj">+ Alojamiento</button><button class="sm" id="apDi">+ Combustible</button><button class="sm" id="apLi">+ Línea libre</button>
+  </div>
+  <div class="tw"><table><thead><tr><th>Concepto</th><th style="width:70px">Unidad</th><th class="n" style="width:90px">Cantidad</th><th class="n" style="width:110px">Precio $</th><th class="n">Subtotal</th><th></th></tr></thead><tbody id="apB"></tbody></table></div>
+  <div class="f" style="margin-top:12px"><div><label>Gastos generales %</label><input id="apGG" inputmode="decimal" value="${nf(gg0 * 100, 2)}"></div><div><label>Utilidad %</label><input id="apUT" inputmode="decimal" value="${nf(ut0 * 100, 2)}"></div></div>
+  <div id="apR" style="margin-top:10px"></div>
+  <div class="mf"><button id="apCan">Cancelar</button><button id="apSoloC">Guardar solo el costo</button><button class="pri" id="apOk">Usar precio sugerido</button></div>`);
+  const cant = +it.cantidad || 0, hrs = /^(h|hm|hh|hora|horas)$/i.test(it.unidad || '') ? cant : 0;
+  const draw = () => {
+    $('apB').innerHTML = rows.map((r, k) => `<tr><td><input data-r="${k}" data-k="c" value="${esc(r.c)}"></td><td><input data-r="${k}" data-k="u" value="${esc(r.u)}"></td><td class="n"><input data-r="${k}" data-k="q" data-n="1" inputmode="decimal" value="${r.q ?? ''}" style="text-align:right"></td><td class="n"><input data-r="${k}" data-k="p" data-n="1" inputmode="numeric" value="${r.p ?? ''}" style="text-align:right"></td><td class="n" data-s="${k}"></td><td><button class="sm dan" data-x="${k}">✕</button></td></tr>`).join('') || '<tr><td colspan="6" class="muted small">Agregue líneas con los botones de arriba.</td></tr>';
+    $('apB').querySelectorAll('input').forEach(inp => inp.oninput = () => { rows[+inp.dataset.r][inp.dataset.k] = inp.dataset.n ? num(inp.value) : inp.value; calc(); });
+    $('apB').querySelectorAll('[data-x]').forEach(b => b.onclick = () => { rows.splice(+b.dataset.x, 1); draw(); });
+    calc();
+  };
+  let sug = 0, cu = 0;
+  const calc = () => {
+    let tot = 0; rows.forEach((r, k) => { const s = (+r.q || 0) * (+r.p || 0); tot += s; const e = document.querySelector(`[data-s="${k}"]`); if (e) e.textContent = clp(s); });
+    const gg = (num(val('apGG')) || 0) / 100, ut = (num(val('apUT')) || 0) / 100;
+    cu = cant ? tot / cant : 0; sug = Math.round(cu * (1 + gg) * (1 + ut));
+    $('apR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo unitario</div><div class="v">${clp(cu)}</div></div>
+      <div class="kpi g"><div class="l">Precio sugerido / ${esc(it.unidad || 'u')}</div><div class="v">${clp(sug)}</div></div><div class="kpi"><div class="l">Precio actual</div><div class="v">${it.precio ? clp(it.precio) : '—'}</div></div></div>
+      ${it.precio && cu ? `<div class="small muted" style="margin-top:6px">Con el precio actual la utilidad sería ${clp((it.precio - cu) * cant)} (${nf((1 - cu / it.precio) * 100)}% sobre el precio).</div>` : ''}`;
+  };
+  $('apGG').oninput = $('apUT').oninput = calc;
+  $('apT').onchange = () => { const t = byId('equipo_tipos', $('apT').value); $('apT').value = ''; if (!t) return;
+    let p = t.tarifa; if (!p) { p = num(prompt(`"${t.nombre}" no tiene tarifa en el catálogo. Escriba el costo por ${t.unidad}:`)); if (!p) return; if (confirm('¿Guardar esta tarifa en el catálogo para próximas cotizaciones?')) upd('equipo_tipos', t.id, {tarifa: p, tarifa_fecha: todayISO()}).then(() => { t.tarifa = p; toast('Tarifa guardada en catálogo'); }).catch(e => alert(e.message)); }
+    rows.push({c: 'Equipo ' + t.nombre, u: t.unidad, q: t.unidad === 'hm' ? (hrs || cant) : t.unidad === 'mes' ? Math.max(1, Math.round((hrs || 180) / P('horas_mes', 180) * 10) / 10) : cant, p}); draw(); };
+  $('apO').onchange = () => { const o = byId('personal', $('apO').value); $('apO').value = ''; if (!o) return; rows.push({c: o.cargo, u: 'HH', q: hrs || P('horas_mes', 180), p: Math.round(+o.valor_hh || 0)}); draw(); };
+  const dias = () => hrs ? Math.round(hrs / 8) : cant;
+  $('apAl').onclick = () => { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: dias(), p: P('almuerzo', 12000) + P('colacion', 5000)}); draw(); };
+  $('apAj').onclick = () => { rows.push({c: 'Alojamiento', u: 'pers-día', q: dias(), p: P('alojamiento', 10000)}); draw(); };
+  $('apDi').onclick = () => { rows.push({c: 'Petróleo diésel', u: 'litro', q: 0, p: P('diesel', 1500)}); draw(); toast('Escriba los litros: consumo l/h × horas'); };
+  $('apLi').onclick = () => { rows.push({c: '', u: 'gl', q: 1, p: null}); draw(); };
+  $('apCan').onclick = closeModal;
+  const save = usePrice => { it.apu = rows; it.costo = Math.round(cu) || null; if (usePrice && sug) it.precio = sug; COT.gg = (num(val('apGG')) || 0) / 100; COT.utilidad = (num(val('apUT')) || 0) / 100; closeModal(); renderItems(); toast('Recuerde presionar Guardar'); };
+  $('apSoloC').onclick = () => save(false); $('apOk').onclick = () => save(true);
+  draw();
+}
+
+/* ---------- Asistente: agregar equipo del catálogo ---------- */
+function asistenteEquipo() {
+  const tipos = D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), ops = D.personal.filter(p => /operador/i.test(p.cargo)).sort((x, y) => x.cargo.localeCompare(y.cargo));
+  modal(`<h3>Agregar equipo a la cotización</h3>
+  <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
+  <div class="f">
+    <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Elegir —')}</select></div>
+    <div><label>Costo equipo ($ por unidad)</label><input id="wTa" inputmode="numeric" placeholder="del catálogo"></div>
+    <div><label>Cobro por</label><select id="wU"><option value="hm">Hora máquina (hm)</option><option value="día">Día</option><option value="mes">Mes</option></select></div>
+    <div><label>Cantidad a cotizar</label><input id="wQ" inputmode="decimal" value="180"></div>
+    <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
+    <div><label>Operador</label><select id="wO"><option value="">Sin operador</option>${ops.map(p => `<option value="${p.id}">${esc(p.cargo)} · ${clp(p.valor_hh)}/HH</option>`).join('')}</select></div>
+    <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option></select></div>
+    <div><label>Días en faena</label><input id="wD" inputmode="numeric"></div>
+    <div><label>Alimentación y alojamiento</label><select id="wAl"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
+    <div><label>Combustible</label><select id="wCo"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
+    <div><label>Movilización $ por viaje</label><input id="wMv" inputmode="numeric" placeholder="0 = sin movilización"></div>
+    <div><label>Utilidad %</label><input id="wUt" inputmode="decimal" value="${nf((COT.utilidad ?? P('utilidad', 0.2)) * 100, 2)}"></div>
+  </div>
+  <div style="margin-top:10px"><label>Descripción del ítem</label><input id="wDe"></div>
+  <div id="wR" style="margin-top:10px"></div>
+  <div class="mf"><button id="wCan">Cancelar</button><button class="pri" id="wOk">Agregar a la cotización</button></div>`);
+  let res = null;
+  const t = () => byId('equipo_tipos', val('wT'));
+  const diasDef = () => { const q = num(val('wQ')) || 0, u = val('wU'), tu = val('wTu'); const meses = u === 'hm' ? q / P('horas_mes', 180) : u === 'mes' ? q : q / 30; return u === 'día' ? q : Math.round(meses * (tu === '5x2' ? 22 : 30)); };
+  const calc = () => {
+    const T = t(), q = num(val('wQ')) || 0, n = num(val('wN')) || 1, u = val('wU'), tar = num(val('wTa')) || 0, o = byId('personal', val('wO')), d = num(val('wD')) ?? diasDef(), ut = (num(val('wUt')) || 0) / 100;
+    const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * 9;
+    const rows = [];
+    if (T) rows.push({c: 'Equipo ' + T.nombre, u, q: q * n, p: tar});
+    if (o) rows.push({c: o.cargo + (val('wTu') !== '5x2' ? ' (turno ' + val('wTu') + ', operadores en rotación)' : ''), u: 'HH', q: Math.max(hrs, u === 'hm' ? 0 : hrs) * n, p: Math.round(+o.valor_hh || 0)});
+    if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
+    if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
+    const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, precio = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut));
+    res = {rows, cu, precio, cant, u};
+    $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi g"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div></div>
+      <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>`;
+  };
+  $('wT').onchange = () => { const T = t(); if (!T) return; $('wTa').value = T.tarifa ? Math.round(T.tarifa) : ''; $('wU').value = T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm';
+    const op = D.personal.find(p => /operador/i.test(p.cargo) && T.nombre.split(' ')[0].length > 3 && p.cargo.toLowerCase().includes(T.nombre.split(' ')[0].toLowerCase().slice(0, 6))); if (op) $('wO').value = op.id;
+    $('wDe').value = `Arriendo de ${T.nombre.toLowerCase()} o similar${val('wO') ? ' con operador' : ''}${$('wU').value === 'hm' ? ` con ${val('wQ')} [HM] mínimas mensuales` : ''}`;
+    if (!T.tarifa) toast('Este equipo no tiene tarifa: escriba el costo a mano'); $('wD').placeholder = diasDef(); calc(); };
+  ['wTa', 'wU', 'wQ', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt'].forEach(k => $(k).oninput = $(k).onchange = () => { $('wD').placeholder = diasDef(); calc(); });
+  if ($('wT').onchange) { /* noop */ }
+  $('wT').addEventListener('change', calc);
+  $('wCan').onclick = closeModal;
+  $('wOk').onclick = async () => {
+    const T = t(); if (!T) return alert('Elija el tipo de equipo.');
+    if (!num(val('wTa'))) return alert('Escriba el costo del equipo.');
+    if (!T.tarifa && confirm(`¿Guardar ${clp(num(val('wTa')))} como tarifa de "${T.nombre}" en el catálogo?`)) { try { await upd('equipo_tipos', T.id, {tarifa: num(val('wTa')), tarifa_fecha: todayISO()}); T.tarifa = num(val('wTa')); } catch (e) { alert(e.message); } }
+    calc();
+    const c = COT, gA = c.items.find(i => i.tipo === 'g') ? c.items.filter(i => i.tipo === 'g')[0].item : (c.items.unshift({tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}), 'A');
+    let pos = c.items.findIndex(i => i.tipo === 'g' && i.item === gA) + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
+    const n = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(gA + '.')).length;
+    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id});
+    const mv = num(val('wMv'));
+    if (mv) {
+      let g = c.items.find(i => i.tipo === 'g' && /moviliz/i.test(i.desc));
+      if (!g) { g = {tipo: 'g', item: String.fromCharCode(65 + c.items.filter(i => i.tipo === 'g').length), desc: 'Movilización y desmovilización del equipo'}; c.items.push(g); }
+      let p2 = c.items.indexOf(g) + 1; while (p2 < c.items.length && c.items[p2].tipo === 'i') p2++;
+      const m = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(g.item + '.')).length;
+      c.items.splice(p2, 0, {tipo: 'i', item: `${g.item}.${m + 1}`, desc: `Movilización y desmovilización de ${T.nombre.toLowerCase()}`, unidad: 'viaje', cantidad: 2 * (num(val('wN')) || 1), precio: mv, costo: null});
+    }
+    COT.utilidad = (num(val('wUt')) || 0) / 100;
+    closeModal(); renderItems(); toast('Equipo agregado · recuerde Guardar');
+  };
+}
+
+/* ---------- Pasar a arriendo ---------- */
+function pasarArriendo() {
+  const c = COT, eqs = c.items.filter(i => i.tipo === 'i' && !/moviliz/i.test(i.desc));
+  if (!eqs.length) return alert('La cotización no tiene ítems de arriendo.');
+  const mov = c.items.find(i => i.tipo === 'i' && /moviliz/i.test(i.desc));
+  modal(`<h3>Pasar a arriendo · Cotización ${esc(nCot(c))}</h3>
+  <p class="small muted">Crea el arriendo con los datos de la cotización y la marca como adjudicada. Queda <b>adjudicado de palabra</b> hasta que registre la OC.</p>
+  <div class="f">
+    <div><label>Ítem a arrendar</label><select id="paI">${eqs.map((it, k) => `<option value="${k}">${esc(it.item)} · ${esc(it.desc.slice(0, 60))}</option>`).join('')}</select></div>
+    <div><label>Equipo de la flota</label><select id="paF">${opts(D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo)), null, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Elegir después —')}</select></div>
+    <div><label>Fecha de inicio</label><input type="date" id="paD" value="${todayISO()}"></div>
+    <div><label>N° OC / SolPed (si ya llegó)</label><input id="paO"></div>
+  </div>
+  <div class="mf"><button id="paCan">Cancelar</button><button class="pri" id="paOk">Crear arriendo</button></div>`);
+  const sugFlota = () => { const it = eqs[+val('paI')]; if (!it || !it.equipo_tipo_id) return; const f = D.flota.find(f => f.activo && f.tipo_id === it.equipo_tipo_id && !D.arriendos.some(a => a.flota_id === f.id && ['palabra', 'con_oc'].includes(a.estado))); if (f && !val('paF')) $('paF').value = f.id; };
+  $('paI').onchange = sugFlota; sugFlota();
+  $('paCan').onclick = closeModal;
+  $('paOk').onclick = () => {
+    const it = eqs[+val('paI')], u = (it.unidad || '').toLowerCase(), oc = val('paO');
+    const modalidad = /^(h|hm|hh|hora|horas)$/.test(u) ? 'hora' : /d[ií]a/.test(u) ? 'dia' : /mes/.test(u) ? 'mes' : 'global';
+    const m = byId('mandantes', c.mandante_id), fin = addDays(val('paD') || todayISO(), modalidad === 'dia' ? Math.max(0, (+it.cantidad || 1) - 1) : 30);
+    const o = {flota_id: val('paF') || null, descripcion: it.desc.slice(0, 120), mandante_id: c.mandante_id, cotizacion: nCot(c), modalidad, tarifa: it.precio,
+      base_cobro: modalidad === 'global' ? 1 : it.cantidad, movilizacion: mov ? +mov.precio || 0 : 0, desmovilizacion: mov && (+mov.cantidad || 0) >= 2 ? +mov.precio || 0 : 0,
+      fecha_inicio: val('paD') || todayISO(), fecha_fin: fin, estado: oc ? 'con_oc' : 'palabra', requiere_hes: m ? m.requiere_hes : true};
+    guardar(async () => {
+      const r = await ins('arriendos', o);
+      await ins('periodos', {arriendo_id: r.id, n: 1, tipo: 'inicial', cantidad: o.base_cobro, tarifa: o.tarifa, desde: o.fecha_inicio, hasta: o.fecha_fin, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
+      await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: r.id});
+      COT = null; location.hash = 'a-' + r.id;
+    }, 'Arriendo creado desde la cotización');
+  };
+}
+
+/* ---------- Oferta para el cliente (solo la tabla, para pegar en el informe) ---------- */
+const txt = s => esc(s || '');
+function docCot(id) {
+  const c = byId('cotizaciones', id); if (!c) { $('view').innerHTML = '<div class="msg err">Cotización no encontrada.</div>'; return; }
+  const t = totCot(c), logo = document.querySelector('.logo').src;
+  $('view').innerHTML = `
+  <div class="row noprint" style="margin-bottom:10px"><a href="#c-${c.id}">← Volver a editar</a></div>
+  <div class="card noprint"><div class="row" style="gap:8px">
+    <button class="pri" id="dImg">🖼️ Copiar como imagen</button><button id="dPng">⬇️ Descargar imagen</button><button id="dTab">📋 Copiar como tabla</button><button id="dPrint">🖨️ PDF</button></div>
+  <div class="small muted" style="margin-top:8px"><b>Copiar como imagen</b>: la pega en su informe de Word con Ctrl+V tal cual se ve (recomendado). <b>Copiar como tabla</b>: la pega editable en Word o Excel. Esta vista no muestra costos ni utilidad.</div></div>
+  <div class="ofwrap"><div id="ofBox" style="box-sizing:border-box;background:#fff;padding:18px;width:820px;max-width:100%;font-family:Calibri,Arial,sans-serif;color:#1b2430">${ofertaHTML(c, t, logo)}${pieOferta(c)}</div></div>`;
+  $('dPrint').onclick = () => { const tt = document.title; document.title = `Oferta ${nCot(c)} - ${c.referencia || ''}`; window.print(); setTimeout(() => { document.title = tt; }, 1000); };
+  $('dTab').onclick = async () => {
+    const el = $('ofBox'), html = el.innerHTML;
+    try { await navigator.clipboard.write([new ClipboardItem({'text/html': new Blob([`<meta charset="utf-8">${html}`], {type: 'text/html'}), 'text/plain': new Blob([el.innerText], {type: 'text/plain'})})]); toast('Tabla copiada: péguela con Ctrl+V'); }
+    catch (e) { const r = document.createRange(); r.selectNode(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); s.removeAllRanges(); toast('Tabla copiada'); }
+  };
+  const toPng = () => new Promise((res, rej) => {
+    const el = $('ofBox'), w = el.offsetWidth, h = el.offsetHeight, k = 2;
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w * k}" height="${h * k}"><foreignObject x="0" y="0" width="${w}" height="${h}" transform="scale(${k})"><div xmlns="http://www.w3.org/1999/xhtml" style="width:${w}px">${el.outerHTML.replace('max-width:100%', '').replace('width:820px', 'width:' + w + 'px')}</div></foreignObject></svg>`;
+    const im = new Image(); im.onload = () => { const cv = document.createElement('canvas'); cv.width = w * k; cv.height = h * k; const x = cv.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, cv.width, cv.height); x.drawImage(im, 0, 0); cv.toBlob(b => b ? res(b) : rej(new Error('No se pudo generar la imagen')), 'image/png'); };
+    im.onerror = () => rej(new Error('No se pudo generar la imagen'));
+    im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg.replace(/&nbsp;/g, '&#160;').replace(/<br>/g, '<br/>').replace(/<img([^>]*?)>/g, (m, a) => a.endsWith('/') ? m : `<img${a}/>`));
+  });
+  $('dImg').onclick = async () => { try { const b = await toPng(); await navigator.clipboard.write([new ClipboardItem({'image/png': b})]); toast('Imagen copiada: péguela en Word con Ctrl+V'); } catch (e) { alert('Su navegador no permitió copiar la imagen. Use "Descargar imagen" y luego insértela en Word.'); } };
+  $('dPng').onclick = async () => { try { const b = await toPng(), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = `Oferta economica ${c.numero} rev_${c.rev}.png`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); } catch (e) { alert(e.message); } };
+}
+function pieOferta(c) {
+  const firma = AJ('firma');
+  return `${c.nota ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap"><b>Notas:</b>\n${txt(c.nota)}</div>` : ''}
+  ${c.con_firma !== false ? `<div style="margin-top:14px;text-align:right;font-size:12px"><div style="display:inline-block;text-align:center;min-width:240px">${firma ? `<img src="${firma}" style="height:70px;display:block;margin:0 auto -6px" alt="">` : '<div style="height:60px"></div>'}<div style="border-top:1px solid #1f3864;padding-top:3px"><b>${txt(AJ('firmante_nombre'))}</b></div><div>${txt(AJ('firmante_cargo'))}</div><div>${txt(AJ('empresa'))}</div></div></div>` : ''}`;
+}
+function ofertaHTML(c, t, logo) {
+  const B = 'border:1px solid #b9c7d8;padding:5px 7px;font-size:12px;', H = B + 'background:#1f3864;color:#fff;font-weight:700;text-align:center;';
+  return `<table class="ofer" style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif">
+    <tr><td colspan="3" style="${B}border-right:none"><img src="${logo}" style="height:34px" alt=""></td><td colspan="3" style="${B}border-left:none;font-weight:700;font-size:15px">OFERTA ECONÓMICA</td></tr>
+    <tr><td colspan="3" style="${B}"><b>Cotización Nº :</b> ${txt(nCot(c))}</td><td colspan="3" style="${B}text-align:right"><b>Cliente:</b> ${txt(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre)}</td></tr>
+    <tr><td colspan="4" style="${B}"><b>Referencia:</b> ${txt(c.referencia)}</td><td colspan="2" style="${B}text-align:right;white-space:nowrap"><b>Fecha:</b> ${fd(c.fecha)}</td></tr>
+    <tr><td style="${H}">Ítem</td><td style="${H}">Descripción</td><td style="${H}">Unidad</td><td style="${H}">Cantidad</td><td style="${H}">Precio Unitario</td><td style="${H}">Total Neto</td></tr>
+    ${(c.items || []).map(it => it.tipo === 'g'
+      ? `<tr><td style="${B}text-align:center;font-weight:700;background:#eef3f9">${txt(it.item)}</td><td colspan="5" style="${B}font-weight:700;background:#eef3f9">${txt(it.desc)}</td></tr>`
+      : `<tr><td style="${B}text-align:center;font-weight:700">${txt(it.item)}</td><td style="${B}">${txt(it.desc)}</td><td style="${B}text-align:center">${txt(it.unidad)}</td><td style="${B}text-align:center">${nf(it.cantidad, 2)}</td><td style="${B}text-align:right;white-space:nowrap">${clp(it.precio)}</td><td style="${B}text-align:right;white-space:nowrap">${clp((+it.cantidad || 0) * (+it.precio || 0))}</td></tr>`).join('')}
+    <tr><td colspan="5" style="${B}text-align:right;font-weight:700">TOTAL NETO</td><td style="${B}text-align:right;font-weight:700;white-space:nowrap">${clp(t.neto)}</td></tr>
+    ${c.mostrar_iva ? `<tr><td colspan="5" style="${B}text-align:right">IVA ${nf(P('iva', 0.19) * 100)}%</td><td style="${B}text-align:right;white-space:nowrap">${clp(t.iva)}</td></tr>
+    <tr><td colspan="5" style="${B}text-align:right;font-weight:700">TOTAL CON IVA</td><td style="${B}text-align:right;font-weight:700;white-space:nowrap">${clp(t.total)}</td></tr>` : ''}
+  </table>`;
+}
+
+/* ---------- Empresa y firma (en Catálogo) ---------- */
+function vEmpresa() {
+  const F = [['empresa', 'Razón social'], ['empresa_rut', 'RUT'], ['empresa_dir', 'Dirección'], ['codigo_prefijo', 'Prefijo del código de cotización'], ['firmante_nombre', 'Nombre de quien firma'], ['firmante_cargo', 'Cargo de quien firma']];
+  return `<div class="card"><h2>Datos que salen en las cotizaciones</h2><div class="f">${F.map(([k, l]) => `<div><label>${l}</label><input data-aj="${k}" value="${esc(AJ(k))}"></div>`).join('')}</div>
+    <h2 style="margin-top:16px">Firma</h2><div class="row" style="align-items:flex-end;gap:16px">
+    <div style="border:1px dashed var(--sky2);border-radius:10px;padding:10px;background:#fff;min-width:220px;min-height:90px;display:flex;align-items:center;justify-content:center">${AJ('firma') ? `<img src="${AJ('firma')}" style="max-height:110px;max-width:280px">` : '<span class="muted small">Sin firma</span>'}</div>
+    <div><label>Cambiar firma (imagen PNG o JPG)</label><input type="file" id="ajF" accept="image/*" style="max-width:280px"><div class="small muted">Se guarda protegida en Supabase, no en GitHub.</div></div></div></div>`;
+}
+function bindEmpresa() {
+  document.querySelectorAll('[data-aj]').forEach(inp => inp.onchange = () => setAjuste(inp.dataset.aj, inp.value.trim()));
+  const f = $('ajF'); if (f) f.onchange = () => {
+    const file = f.files[0]; if (!file) return;
+    const rd = new FileReader(); rd.onload = () => { const im = new Image(); im.onload = () => {
+      const k = Math.min(1, 480 / im.width), cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k);
+      const x = cv.getContext('2d'); x.drawImage(im, 0, 0, cv.width, cv.height);
+      const d = x.getImageData(0, 0, cv.width, cv.height), p = d.data;
+      for (let i = 0; i < p.length; i += 4) { const g = (p[i] + p[i + 1] + p[i + 2]) / 3, a = p[i + 3] / 255 * Math.max(0, Math.min(1, (225 - g) / 120)); p[i] = 16; p[i + 1] = 38; p[i + 2] = 112; p[i + 3] = Math.round(a * 255); }
+      x.putImageData(d, 0, 0); setAjuste('firma', cv.toDataURL('image/png')).then(() => vCatalogo());
+    }; im.src = rd.result; }; rd.readAsDataURL(file);
+  };
+}
+async function setAjuste(clave, valor) {
+  try { await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave, valor})}); D.ajustesMap[clave] = valor; toast('Guardado'); }
+  catch (e) { alert(e.message); }
 }
 
 /* ---------------- Inicio de sesión ---------------- */
