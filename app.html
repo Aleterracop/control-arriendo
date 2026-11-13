@@ -839,7 +839,7 @@ function vCot(id) {
   <div class="card row">
     <button class="dan sm" id="cDel">Eliminar</button><button class="sm" id="cRev">Nueva revisión</button><button class="sm" id="cDup">Duplicar como nueva</button>
     <span class="sp"></span>
-    ${c.arriendo_id ? `<a class="btn sm" href="#a-${c.arriendo_id}" style="text-decoration:none">🚜 Ver arriendo</a>` : `<button class="sm" id="cArr">✅ Adjudicada: pasar a arriendo</button>`}
+    ${c.arriendo_id ? `<a class="btn sm" href="#a-${c.arriendo_id}" style="text-decoration:none">🚜 Ver arriendo</a><button class="sm" id="cExt">➕ Crear extensión</button>` : `<button class="sm" id="cArr">✅ Adjudicada: pasar a arriendo o prórroga</button>`}
     <button class="sm" id="cDoc2">📄 Oferta para el cliente</button><button class="pri sm" id="cSave2">💾 Guardar</button>
   </div>`;
   renderItems();
@@ -859,6 +859,7 @@ function vCot(id) {
   $('cRev').onclick = () => copiaCot(c.numero, Math.max(...D.cotizaciones.filter(x => x.numero === c.numero).map(x => x.rev)) + 1);
   $('cDup').onclick = () => copiaCot(nextNumero(), 0);
   if ($('cArr')) $('cArr').onclick = () => pasarArriendo();
+  if ($('cExt')) $('cExt').onclick = () => crearExtension();
 }
 function lastGroup() { const g = COT.items.filter(i => i.tipo === 'g'); return g.length ? g[g.length - 1].item : ''; }
 function nextItemCode(g) { const n = COT.items.filter(i => i.tipo === 'i' && String(i.item || '').startsWith(g + '.')).length; return g ? `${g}.${n + 1}` : String(COT.items.filter(i => i.tipo === 'i').length + 1); }
@@ -1033,24 +1034,56 @@ function asistenteEquipo() {
   };
 }
 
+/* ---------- Extensión (nueva cotización enlazada al mismo arriendo) ---------- */
+const baseRef = r => (r || '').replace(/\s*[–-]\s*Extensi[oó]n\s*\d+\s*$/i, '');
+function crearExtension() {
+  const c = COT, a = byId('arriendos', c.arriendo_id);
+  const prev = D.cotizaciones.filter(x => x.arriendo_id === c.arriendo_id || /Extensión \d+ de/.test(x.notas || '') && (x.notas || '').includes('[arr:' + c.arriendo_id + ']'));
+  const k = prev.filter(x => /Extensi[oó]n\s*\d+/i.test(x.referencia || '')).length + 1;
+  const items = (c.items || []).filter(i => !(i.tipo === 'i' && /moviliz/i.test(i.desc)));
+  const limpio = items.filter((i, idx) => i.tipo !== 'g' || (items[idx + 1] && items[idx + 1].tipo === 'i'));
+  const o = {numero: nextNumero(), rev: 0, fecha: todayISO(), mandante_id: c.mandante_id, cliente: c.cliente, referencia: `${baseRef(c.referencia)} – Extensión ${k}`, validez_dias: c.validez_dias,
+    nota: c.nota, items: limpio, gg: c.gg, utilidad: c.utilidad, mostrar_iva: c.mostrar_iva, con_firma: c.con_firma, estado: 'borrador',
+    notas: `Extensión ${k} de cotización ${nCot(c)}${a ? ' · ' + a.descripcion : ''} [arr:${c.arriendo_id}]`};
+  if (!confirm(`Se creará la cotización ${o.numero} "${o.referencia}" sin movilización. ¿Continuar?`)) return;
+  guardar(async () => { const r = await ins('cotizaciones', o); COT = null; location.hash = 'c-' + r.id; }, `Extensión ${k} creada`);
+}
+
 /* ---------- Pasar a arriendo ---------- */
 function pasarArriendo() {
   const c = COT, eqs = c.items.filter(i => i.tipo === 'i' && !/moviliz/i.test(i.desc));
   if (!eqs.length) return alert('La cotización no tiene ítems de arriendo.');
   const mov = c.items.find(i => i.tipo === 'i' && /moviliz/i.test(i.desc));
   modal(`<h3>Pasar a arriendo · Cotización ${esc(nCot(c))}</h3>
-  <p class="small muted">Crea el arriendo con los datos de la cotización y la marca como adjudicada. Queda <b>adjudicado de palabra</b> hasta que registre la OC.</p>
+  <p class="small muted">Marca la cotización como adjudicada y la lleva a Arriendos. Queda <b>adjudicado sin OC</b> hasta que registre la OC.</p>
   <div class="f">
+    <div><label>¿Qué es esta cotización?</label><select id="paTipo"><option value="nuevo">Arriendo nuevo (lleva movilización)</option><option value="prorroga">Prórroga de un arriendo que ya está en faena</option></select></div>
+    <div id="paArrW" hidden><label>Arriendo a prorrogar</label><select id="paArr">${opts(D.arriendos.filter(a => ['palabra', 'con_oc'].includes(a.estado) && (!c.mandante_id || a.mandante_id === c.mandante_id)), null, a => a.descripcion + (a.cotizacion ? ' · ' + a.cotizacion : ''), '— Elegir —')}</select></div>
     <div><label>Ítem a arrendar</label><select id="paI">${eqs.map((it, k) => `<option value="${k}">${esc(it.item)} · ${esc(it.desc.slice(0, 60))}</option>`).join('')}</select></div>
-    <div><label>Equipo de la flota</label><select id="paF">${opts(D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo)), null, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Elegir después —')}</select></div>
+    <div id="paFW"><label>Equipo de la flota</label><select id="paF">${opts(D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo)), null, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Elegir después —')}</select></div>
     <div><label>Fecha de inicio</label><input type="date" id="paD" value="${todayISO()}"></div>
     <div><label>N° OC / SolPed (si ya llegó)</label><input id="paO"></div>
   </div>
   <div class="mf"><button id="paCan">Cancelar</button><button class="pri" id="paOk">Crear arriendo</button></div>`);
   const sugFlota = () => { const it = eqs[+val('paI')]; if (!it || !it.equipo_tipo_id) return; const f = D.flota.find(f => f.activo && f.tipo_id === it.equipo_tipo_id && !D.arriendos.some(a => a.flota_id === f.id && ['palabra', 'con_oc'].includes(a.estado))); if (f && !val('paF')) $('paF').value = f.id; };
   $('paI').onchange = sugFlota; sugFlota();
+  $('paTipo').onchange = () => { const pr = val('paTipo') === 'prorroga'; $('paArrW').hidden = !pr; $('paFW').hidden = pr; $('paOk').textContent = pr ? 'Agregar prórroga' : 'Crear arriendo'; document.querySelector('label[for=paD], #paD').previousElementSibling.textContent = pr ? 'Prórroga desde' : 'Fecha de inicio'; if (pr) { const a = byId('arriendos', val('paArr')); if (a && a.fecha_fin) $('paD').value = addDays(a.fecha_fin, 1); } };
+  $('paArr').onchange = () => { const a = byId('arriendos', val('paArr')); if (a && a.fecha_fin) $('paD').value = addDays(a.fecha_fin, 1); };
+  const mArr = /\[arr:([\w-]+)\]/.exec(c.notas || '');
+  if (mArr && byId('arriendos', mArr[1])) { $('paTipo').value = 'prorroga'; $('paArr').value = mArr[1]; $('paTipo').onchange(); }
   $('paCan').onclick = closeModal;
   $('paOk').onclick = () => {
+    if (val('paTipo') === 'prorroga') {
+      const a = byId('arriendos', val('paArr')); if (!a) return alert('Elija el arriendo a prorrogar.');
+      const it = eqs[+val('paI')], oc = val('paO'), pers = D.periodos.filter(p => p.arriendo_id === a.id), n = pers.reduce((m, p) => Math.max(m, p.n), 0) + 1;
+      const desde = val('paD') || todayISO(), hasta = addDays(desde, a.modalidad === 'dia' ? Math.max(0, (+it.cantidad || 1) - 1) : 29);
+      return guardar(async () => {
+        await ins('periodos', {arriendo_id: a.id, n, tipo: 'prorroga', cantidad: it.cantidad, tarifa: it.precio, desde, hasta, estado: oc ? 'con_oc' : 'palabra', oc: oc || null, notas: 'Cotización ' + nCot(c)});
+        await upd('arriendos', a.id, {fecha_fin: hasta, ...(+it.precio && +it.precio !== +a.tarifa ? {tarifa: it.precio} : {})});
+        await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: a.id});
+        COT = null; location.hash = 'a-' + a.id;
+      }, `Prórroga ${n} agregada al arriendo`);
+    }
     const it = eqs[+val('paI')], u = (it.unidad || '').toLowerCase(), oc = val('paO');
     const modalidad = /^(h|hm|hh|hora|horas)$/.test(u) ? 'hora' : /d[ií]a/.test(u) ? 'dia' : /mes/.test(u) ? 'mes' : 'global';
     const m = byId('mandantes', c.mandante_id), fin = addDays(val('paD') || todayISO(), modalidad === 'dia' ? Math.max(0, (+it.cantidad || 1) - 1) : 30);
