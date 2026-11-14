@@ -104,6 +104,7 @@ label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bot
   .hero{padding:14px 16px}.hero h2{font-size:17px}
 }
 
+#tIt td input{min-width:54px}#tIt td:nth-child(2) input{min-width:230px}#tIt td:nth-child(3) input{min-width:60px}#tIt td:nth-child(4) input{min-width:70px}#tIt td:nth-child(5) input{min-width:100px}#tIt td:nth-child(7) input{min-width:100px}
 /* calculadora */
 #view td.n:not(:has(input)):not(:empty),#view .kpi .v{cursor:pointer}
 #view td.n:not(:has(input)):hover,#view .kpi .v:hover{text-decoration:underline dotted;text-underline-offset:3px}
@@ -858,7 +859,7 @@ let tabC = 'equipo_tipos';
 const CAT = {
   equipo_tipos: {t: 'Equipos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['tarifa', 'Tarifa $', 'n'], ['consumo_lh', 'Diésel l/h', 'n'], ['balde_m3', 'Balde m³', 'n'], ['notas', 'Notas', 't']]},
   personal: {t: 'Personal', cols: [['cargo', 'Cargo', 't'], ['sueldo', 'Sueldo líquido $', 'n'], ['valor_hh', 'Valor HH $', 'n'], ['notas', 'Notas', 't']]},
-  materiales: {t: 'Materiales e insumos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['precio', 'Precio $', 'n'], ['notas', 'Notas', 't']]},
+  materiales: {t: 'Materiales, servicios e insumos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['precio', 'Precio $', 'n'], ['notas', 'Notas', 't']]},
   parametros: {t: 'Parámetros', cols: [['clave', 'Clave', 'r'], ['descripcion', 'Descripción', 'r'], ['valor', 'Valor', 'n']]}
 };
 function vCatalogo() {
@@ -930,6 +931,7 @@ function totCot(c) {
   let neto = 0, costo = 0, sinCosto = 0;
   (c.items || []).forEach(it => {
     if (it.tipo !== 'i') return;
+    if (it.oculto) { costo += (+it.cantidad || 0) * (+it.costo || 0); return; }   // costo interno: no se cobra ni aparece en la oferta
     const t = (+it.cantidad || 0) * (+it.precio || 0); neto += t;
     if (it.costo != null && it.costo !== '') costo += (+it.cantidad || 0) * (+it.costo || 0); else if (t) sinCosto += t;
   });
@@ -1055,8 +1057,8 @@ function vCot(id) {
   $('aIt').onclick = () => { const g = lastGroup(); c.items.push({tipo: 'i', item: nextItemCode(g), desc: '', unidad: 'gl', cantidad: 1, precio: null, costo: null}); renderItems(); };
   $('aGr').onclick = () => { const letra = String.fromCharCode(65 + c.items.filter(i => i.tipo === 'g').length); c.items.push({tipo: 'g', item: letra, desc: 'Nuevo grupo'}); renderItems(); };
   $('aEq').onclick = () => asistenteEquipo();
-  $('cSave').onclick = $('cSave2').onclick = () => saveCot();
-  $('cDoc').onclick = $('cDoc2').onclick = async () => { if (await saveCot(true)) location.hash = 'cd-' + c.id; };
+  $('cSave').onclick = $('cSave2').onclick = () => { const src0 = byId('cotizaciones', c.id); if (c.estado === 'enviada' && src0 && src0.estado !== 'enviada' && !c._revisado) revisarIndices(() => saveCot()); else saveCot(); };
+  $('cDoc').onclick = $('cDoc2').onclick = async () => { const go2 = async () => { if (await saveCot(true)) location.hash = 'cd-' + c.id; }; if (c._revisado) go2(); else revisarIndices(go2); };
   $('cDel').onclick = () => { if (confirm(`¿Eliminar la cotización ${nCot(c)}?`)) guardar(async () => { await del('cotizaciones', c.id); COT = null; location.hash = 'cotizar'; }, 'Cotización eliminada'); };
   $('cRev').onclick = () => copiaCot(c.numero, Math.max(...D.cotizaciones.filter(x => x.numero === c.numero).map(x => x.rev)) + 1);
   $('cDup').onclick = () => copiaCot(nextNumero(), 0);
@@ -1065,25 +1067,55 @@ function vCot(id) {
 }
 function lastGroup() { const g = COT.items.filter(i => i.tipo === 'g'); return g.length ? g[g.length - 1].item : ''; }
 function nextItemCode(g) { const n = COT.items.filter(i => i.tipo === 'i' && String(i.item || '').startsWith(g + '.')).length; return g ? `${g}.${n + 1}` : String(COT.items.filter(i => i.tipo === 'i').length + 1); }
+function catIndex() {
+  const M = new Map(), add = (nombre, unidad, costo, fuente) => { if (nombre) M.set(nombre.trim().toLowerCase(), {nombre: nombre.trim(), unidad: unidad || 'gl', costo: costo == null ? null : +costo, fuente}); };
+  D.equipo_tipos.forEach(t => add(t.nombre, t.unidad, t.tarifa, 'Equipos'));
+  D.materiales.forEach(m => add(m.nombre, m.unidad, m.precio, 'Materiales'));
+  D.personal.forEach(p => add(p.cargo, 'HH', p.valor_hh, 'Personal'));
+  return M;
+}
 function renderItems() {
   const c = COT, tb = document.querySelector('#tIt tbody'); if (!tb) return;
+  const CI = catIndex();
+  if (!document.getElementById('catList')) { const dl = document.createElement('datalist'); dl.id = 'catList'; document.body.appendChild(dl); }
+  document.getElementById('catList').innerHTML = [...CI.values()].map(x => `<option value="${esc(x.nombre)}">${x.costo ? clp(x.costo) + ' / ' + esc(x.unidad) : 'sin costo'} · ${x.fuente}</option>`).join('');
   document.querySelectorAll('#tIt .int').forEach(e => e.hidden = !verInternos);
   tb.innerHTML = c.items.map((it, i) => it.tipo === 'g'
-    ? `<tr style="background:var(--pale)"><td><input data-i="${i}" data-k="item" value="${esc(it.item)}" style="font-weight:700"></td><td colspan="${verInternos ? 7 : 5}"><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" style="font-weight:700"></td><td class="n">${btnsItem(i)}</td></tr>`
-    : `<tr><td><input data-i="${i}" data-k="item" value="${esc(it.item)}"></td><td><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" placeholder="Descripción"></td><td><input data-i="${i}" data-k="unidad" value="${esc(it.unidad || '')}"></td>
+    ? `<tr style="background:var(--pale)"><td><input data-i="${i}" data-k="item" value="${esc(it.item)}" style="font-weight:700"></td><td colspan="${verInternos ? 7 : 5}"><div class="row" style="flex-wrap:nowrap"><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" style="font-weight:700"><button class="sm pri" data-addg="${i}" style="white-space:nowrap">+ ítem en ${esc(it.item)}</button></div></td><td class="n">${btnsItem(i)}</td></tr>`
+    : `<tr${it.oculto ? ' style="opacity:.7;background:repeating-linear-gradient(45deg,#fff,#fff 8px,#f3f6f9 8px,#f3f6f9 16px)" title="Costo interno: no aparece en la oferta"' : ''}><td><input data-i="${i}" data-k="item" value="${esc(it.item)}">${it.oculto ? '<div class="chip" style="margin-top:2px">interno</div>' : ''}</td><td><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" placeholder="Escriba o elija del catálogo" list="catList"></td><td><input data-i="${i}" data-k="unidad" value="${esc(it.unidad || '')}"></td>
       <td class="n"><input data-i="${i}" data-k="cantidad" data-n="1" inputmode="decimal" value="${it.cantidad ?? ''}" style="text-align:right"></td>
       <td class="n"><input data-i="${i}" data-k="precio" data-n="1" inputmode="numeric" value="${it.precio ?? ''}" style="text-align:right" placeholder="$"></td>
       <td class="n"><b data-tot="${i}"></b></td>
       ${verInternos ? `<td class="n"><input data-i="${i}" data-k="costo" data-n="1" inputmode="numeric" value="${it.costo ?? ''}" style="text-align:right" placeholder="—"></td><td class="n small" data-ut="${i}"></td>` : ''}
       <td class="n">${it.tipo === 'i' ? `<button class="sm" data-apu="${i}" title="Calcular costo y precio (APU)">🧮</button>` : ''}${btnsItem(i)}</td></tr>`).join('') || `<tr><td colspan="9" class="muted">Agregue ítems con los botones de arriba.</td></tr>`;
   tb.querySelectorAll('input[data-k]').forEach(inp => inp.oninput = () => { const it = c.items[+inp.dataset.i]; it[inp.dataset.k] = inp.dataset.n ? num(inp.value) : inp.value; updTot(); });
-  tb.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; if (i > 0) { [c.items[i - 1], c.items[i]] = [c.items[i], c.items[i - 1]]; renderItems(); } });
-  tb.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.dn; if (i < c.items.length - 1) { [c.items[i + 1], c.items[i]] = [c.items[i], c.items[i + 1]]; renderItems(); } });
+  tb.querySelectorAll('input[data-k="desc"][list]').forEach(inp => inp.onchange = () => {
+    const it = c.items[+inp.dataset.i], x = CI.get(inp.value.trim().toLowerCase()); if (!x) return;
+    it.unidad = x.unidad; if (x.costo != null) it.costo = Math.round(x.costo);
+    if (!it.precio && x.costo) it.precio = Math.round(x.costo * (1 + (c.gg ?? 0)) * (1 + (c.utilidad ?? P('utilidad', 0.2))));
+    renderItems(); toast(`Desde el catálogo: costo ${x.costo ? clp(x.costo) + ' / ' + x.unidad : 'sin costo'} · puede cambiarlo`);
+  });
+  const hl = k => { const r = document.querySelector(`#tIt [data-up="${k}"]`); if (r) r.closest('tr').style.outline = '2px solid #e6a821'; };
+  tb.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; if (i > 0) { [c.items[i - 1], c.items[i]] = [c.items[i], c.items[i - 1]]; renderItems(); hl(i - 1); } });
+  tb.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.dn; if (i < c.items.length - 1) { [c.items[i + 1], c.items[i]] = [c.items[i], c.items[i + 1]]; renderItems(); hl(i + 1); } });
   tb.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { c.items.splice(+b.dataset.rm, 1); renderItems(); });
   tb.querySelectorAll('[data-apu]').forEach(b => b.onclick = () => formAPU(+b.dataset.apu));
+  tb.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => {
+    const it = c.items[+b.dataset.hide];
+    if (!it.oculto) { if (!confirm('Este ítem quedará como COSTO INTERNO: no se cobra ni aparece en la oferta del cliente, pero su costo se descuenta de la utilidad.\n\nÚtil, por ejemplo, para una movilización que no cobrará (o que subió en el precio del equipo). ¿Continuar?')) return;
+      it.oculto = true; it.precio_oculto = it.precio; it.precio = 0; }
+    else { it.oculto = false; it.precio = it.precio_oculto ?? it.precio; delete it.precio_oculto; }
+    renderItems(); toast(it.oculto ? 'Ítem oculto: queda como costo interno' : 'Ítem visible en la oferta');
+  });
+  tb.querySelectorAll('[data-addg]').forEach(b => b.onclick = () => {
+    const gi = +b.dataset.addg, g = c.items[gi]; let pos = gi + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
+    const n = c.items.slice(gi + 1, pos).length;
+    c.items.splice(pos, 0, {tipo: 'i', item: `${g.item}.${n + 1}`, desc: '', unidad: 'gl', cantidad: 1, precio: null, costo: null});
+    renderItems(); const inp = document.querySelector(`#tIt input[data-i="${pos}"][data-k="desc"]`); if (inp) { inp.focus(); inp.closest('tr').style.outline = '2px solid #e6a821'; }
+  });
   updTot();
 }
-const btnsItem = i => `<button class="sm" data-up="${i}" title="Subir">↑</button><button class="sm" data-dn="${i}" title="Bajar">↓</button><button class="sm dan" data-rm="${i}" title="Quitar">✕</button>`;
+const btnsItem = i => `${COT.items[i] && COT.items[i].tipo === 'i' ? `<button class="sm" data-hide="${i}" title="${COT.items[i].oculto ? 'Mostrar en la oferta' : 'Ocultar en la oferta (costo interno)'}">${COT.items[i].oculto ? '🙈' : '👁'}</button>` : ''}<button class="sm" data-up="${i}" title="Subir">↑</button><button class="sm" data-dn="${i}" title="Bajar">↓</button><button class="sm dan" data-rm="${i}" title="Quitar">✕</button>`;
 function updTot() {
   const c = COT, t = totCot(c);
   c.items.forEach((it, i) => {
@@ -1109,7 +1141,7 @@ async function saveCot(silent) {
     .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
   o.actualizado = new Date().toISOString();
   if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
-  try { const r = await upd('cotizaciones', c.id, o); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; COT = JSON.parse(JSON.stringify(r)); if (!silent) toast('Cotización guardada'); return true; }
+  try { const r = await upd('cotizaciones', c.id, o); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; const rv = c._revisado; COT = JSON.parse(JSON.stringify(r)); COT._revisado = rv; if (!silent) toast('Cotización guardada'); return true; }
   catch (e) { if (e.message === 'SESSION') { showLogin('Su sesión expiró.'); return false; } alert(e.message); return false; }
 }
 function copiaCot(numero, rev) {
@@ -1229,7 +1261,8 @@ function asistenteEquipo() {
       if (!g) { g = {tipo: 'g', item: String.fromCharCode(65 + c.items.filter(i => i.tipo === 'g').length), desc: 'Movilización y desmovilización del equipo'}; c.items.push(g); }
       let p2 = c.items.indexOf(g) + 1; while (p2 < c.items.length && c.items[p2].tipo === 'i') p2++;
       const m = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(g.item + '.')).length;
-      c.items.splice(p2, 0, {tipo: 'i', item: `${g.item}.${m + 1}`, desc: `Movilización y desmovilización de ${T.nombre.toLowerCase()}`, unidad: 'viaje', cantidad: 2 * (num(val('wN')) || 1), precio: mv, costo: null});
+      const fl = D.materiales.find(x => /flete|movilizaci/i.test(x.nombre) && +x.precio);
+      c.items.splice(p2, 0, {tipo: 'i', item: `${g.item}.${m + 1}`, desc: `Movilización y desmovilización de ${T.nombre.toLowerCase()}`, unidad: 'viaje', cantidad: 2 * (num(val('wN')) || 1), precio: mv, costo: fl ? Math.round(+fl.precio) : null});
     }
     COT.utilidad = (num(val('wUt')) || 0) / 100;
     closeModal(); renderItems(); toast('Equipo agregado · recuerde Guardar');
@@ -1249,6 +1282,37 @@ function crearExtension() {
     notas: `Extensión ${k} de cotización ${nCot(c)}${a ? ' · ' + a.descripcion : ''} [arr:${c.arriendo_id}]`};
   if (!confirm(`Se creará la cotización ${o.numero} "${o.referencia}" sin movilización. ¿Continuar?`)) return;
   guardar(async () => { const r = await ins('cotizaciones', o); COT = null; location.hash = 'c-' + r.id; }, `Extensión ${k} creada`);
+}
+
+
+/* ---------- Aviso: revisar índices y precios antes de enviar ---------- */
+const IDX = [['uf', 'Valor UF', '$'], ['dolar', 'Dólar observado', '$'], ['diesel', 'Petróleo diésel ($/litro)', '$'], ['iva', 'IVA (0,19 = 19%)', '']];
+function revisarIndices(next) {
+  const c = COT, hoy = todayISO(), dias = iso => iso ? days(iso.slice(0, 10), hoy) : null;
+  const par = k => D.parametros.find(p => p.clave === k) || {};
+  const viejos = [];
+  (c.items || []).forEach(it => { if (it.tipo !== 'i') return;
+    const t = it.equipo_tipo_id ? byId('equipo_tipos', it.equipo_tipo_id) : D.equipo_tipos.find(x => x.nombre.toLowerCase() === (it.desc || '').trim().toLowerCase());
+    if (it.costo == null || it.costo === '') viejos.push(`<li><b>${esc(it.item)}</b> ${esc((it.desc || '').slice(0, 50))}: <span style="color:var(--orange)">sin costo</span> (no se calcula su utilidad)</li>`);
+    else if (t && (!t.tarifa_fecha || dias(t.tarifa_fecha) > 90)) viejos.push(`<li><b>${esc(it.item)}</b> ${esc(t.nombre)}: costo del catálogo ${t.tarifa_fecha ? 'actualizado hace ' + dias(t.tarifa_fecha) + ' días' : 'sin fecha de actualización'}</li>`); });
+  modal(`<h3>Antes de enviar, revise 🔎</h3>
+    <p class="small muted">¿Están al día los índices y los precios unitarios? Puede corregirlos aquí mismo.</p>
+    <div class="tw"><table><thead><tr><th>Índice</th><th class="n">Valor</th><th>Última actualización</th></tr></thead><tbody>
+    ${IDX.map(([k, l]) => { const p = par(k), d = dias(p.actualizado), old = k !== 'iva' && (d == null || d > 7);
+      return `<tr><td>${l}</td><td class="n"><input data-ix="${k}" inputmode="decimal" value="${p.valor ?? ''}" style="text-align:right;max-width:130px;border-color:#c6dcec;background:#fff" placeholder="${k === 'dolar' ? 'ej. 950' : ''}"></td><td class="small">${p.actualizado ? fd(p.actualizado.slice(0, 10)) + ` <span style="color:${old ? 'var(--red)' : 'var(--green)'}">(${d === 0 ? 'hoy' : 'hace ' + d + ' días'})</span>` : '<span style="color:var(--red)">nunca</span>'}</td></tr>`; }).join('')}
+    </tbody></table></div>
+    ${viejos.length ? `<div class="msg info small" style="margin-top:10px"><b>Precios unitarios para revisar:</b><ul style="margin:6px 0 0 18px;padding:0">${viejos.join('')}</ul></div>` : '<div class="msg ok small" style="margin-top:10px">Los costos de los ítems están completos y al día.</div>'}
+    <div class="mf"><button id="riCan">Volver a la cotización</button><button id="riCat">Ir al catálogo</button><button class="pri" id="riOk">✔ Todo al día, continuar</button></div>`);
+  $('riCan').onclick = closeModal;
+  $('riCat').onclick = () => { closeModal(); tabC = 'equipo_tipos'; location.hash = 'catalogo'; };
+  $('riOk').onclick = async () => {
+    try {
+      const now = new Date().toISOString(), rows = IDX.map(([k, l]) => { const v = num(document.querySelector(`[data-ix="${k}"]`).value); const p = par(k); return v == null ? null : {clave: k, valor: v, descripcion: p.descripcion || l, actualizado: now}; }).filter(Boolean);
+      if (rows.length) await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify(rows)});
+      rows.forEach(r => { const p = par(r.clave); if (p.clave) Object.assign(p, r); else D.parametros.push(r); D.P[r.clave] = r.valor; });
+      c._revisado = true; closeModal(); toast('Índices confirmados'); next();
+    } catch (e) { alert(e.message); }
+  };
 }
 
 /* ---------- Pasar a arriendo ---------- */
@@ -1333,6 +1397,12 @@ function pieOferta(c) {
   return `${c.nota ? `<div style="font-size:12px;margin-top:10px;white-space:pre-wrap"><b>Notas:</b>\n${txt(c.nota)}</div>` : ''}
   ${c.con_firma !== false ? `<div style="margin-top:14px;text-align:right;font-size:12px"><div style="display:inline-block;text-align:center;min-width:240px">${firma ? `<img src="${firma}" style="height:70px;display:block;margin:0 auto -6px" alt="">` : '<div style="height:60px"></div>'}<div style="border-top:1px solid #1f3864;padding-top:3px"><b>${txt(AJ('firmante_nombre'))}</b></div><div>${txt(AJ('firmante_cargo'))}</div><div>${txt(AJ('empresa'))}</div></div></div>` : ''}`;
 }
+function itemsVisibles(items) {   // quita los ítems internos y los grupos que quedan vacíos
+  const out = []; let g = null, pend = [];
+  (items || []).forEach(it => { if (it.tipo === 'g') { if (g && pend.length) out.push(g, ...pend); else if (!g && pend.length) out.push(...pend); g = it; pend = []; } else if (!it.oculto) pend.push(it); });
+  if (pend.length) { if (g) out.push(g); out.push(...pend); }
+  return out;
+}
 function ofertaHTML(c, t, logo) {
   const B = 'border:1px solid #b9c7d8;padding:5px 7px;font-size:12px;', H = B + 'background:#1f3864;color:#fff;font-weight:700;text-align:center;';
   return `<table class="ofer" style="border-collapse:collapse;width:100%;font-family:Calibri,Arial,sans-serif">
@@ -1340,7 +1410,7 @@ function ofertaHTML(c, t, logo) {
     <tr><td colspan="3" style="${B}"><b>Cotización Nº :</b> ${txt(nCot(c))}</td><td colspan="3" style="${B}text-align:right"><b>Cliente:</b> ${txt(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre)}</td></tr>
     <tr><td colspan="4" style="${B}"><b>Referencia:</b> ${txt(c.referencia)}</td><td colspan="2" style="${B}text-align:right;white-space:nowrap"><b>Fecha:</b> ${fd(c.fecha)}</td></tr>
     <tr><td style="${H}">Ítem</td><td style="${H}">Descripción</td><td style="${H}">Unidad</td><td style="${H}">Cantidad</td><td style="${H}">Precio Unitario</td><td style="${H}">Total Neto</td></tr>
-    ${(c.items || []).map(it => it.tipo === 'g'
+    ${itemsVisibles(c.items).map(it => it.tipo === 'g'
       ? `<tr><td style="${B}text-align:center;font-weight:700;background:#eef3f9">${txt(it.item)}</td><td colspan="5" style="${B}font-weight:700;background:#eef3f9">${txt(it.desc)}</td></tr>`
       : `<tr><td style="${B}text-align:center;font-weight:700">${txt(it.item)}</td><td style="${B}">${txt(it.desc)}</td><td style="${B}text-align:center">${txt(it.unidad)}</td><td style="${B}text-align:center">${nf(it.cantidad, 2)}</td><td style="${B}text-align:right;white-space:nowrap">${clp(it.precio)}</td><td style="${B}text-align:right;white-space:nowrap">${clp((+it.cantidad || 0) * (+it.precio || 0))}</td></tr>`).join('')}
     <tr><td colspan="5" style="${B}text-align:right;font-weight:700">TOTAL NETO</td><td style="${B}text-align:right;font-weight:700;white-space:nowrap">${clp(t.neto)}</td></tr>

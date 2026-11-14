@@ -31,6 +31,9 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
   - APU por ítem (🧮);
   - neto, IVA, costo y utilidad, con opción de ocultarlos;
   - "Oferta para el cliente": solo la tabla de oferta económica con firma, para pegar en el informe propio (copiar como imagen o tabla, PNG o PDF);
+  - descripción con sugerencias del catálogo: al elegir, se llenan solos la unidad, el costo y un precio sugerido (editables);
+  - botón 👁 por ítem: "costo interno" (no se cobra ni aparece en la oferta, pero descuenta de la utilidad). Ej.: movilización no cobrada;
+  - aviso "Antes de enviar, revise": UF, dólar, diésel, IVA (editables) y costos del catálogo antiguos (>90 días) o ítems sin costo;
   - "Pasar a arriendo o prórroga";
   - "Crear extensión": nueva cotización "– Extensión N", sin movilización, enlazada al mismo arriendo.
 - **Arriendos**:
@@ -49,6 +52,7 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 - Días con falla del equipo (Terracop) o en taller no se cobran en arriendos por día.
 - Cobro por hora (hm/hh) usa horómetro obligatorio. Cobro por día o mes cuenta días corridos o días con reporte; el horómetro es opcional (el martillo no tiene).
 - Cotizaciones en neto; el EDP agrega IVA 19%.
+- La movilización la ejecuta Transporte Terracop y la factura internamente a Terracop: su tarifa interna es el costo (catálogo "Flete Transporte Terracop – …"). Lo mismo con Maestranza Terracop. A veces se cobra solo la movilización, se rebaja o se absorbe en el precio del equipo.
 - El precio sugerido se calcula como costo × (1 + GG) × (1 + utilidad). Utilidad por defecto: 20%.
 
 ## Pendiente
