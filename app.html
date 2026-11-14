@@ -103,6 +103,21 @@ label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bot
   .hide-m{display:none}
   .hero{padding:14px 16px}.hero h2{font-size:17px}
 }
+
+/* calculadora */
+#view td.n:not(:has(input)):not(:empty),#view .kpi .v{cursor:pointer}
+#view td.n:not(:has(input)):hover,#view .kpi .v:hover{text-decoration:underline dotted;text-underline-offset:3px}
+.csel{background:#fff3b8!important;box-shadow:inset 0 0 0 2px #e6a821;border-radius:4px}
+.cneg{background:#fde0e0!important;box-shadow:inset 0 0 0 2px var(--red);border-radius:4px}
+#calc{position:fixed;right:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--sky2);border-radius:14px;box-shadow:var(--sh2);min-width:240px;max-width:340px;font-size:13px}
+#calc .ch{display:flex;align-items:center;gap:8px;padding:9px 12px;background:linear-gradient(135deg,var(--navy2),var(--blue));color:#fff;border-radius:13px 13px 0 0;cursor:pointer}
+#calc .cb{padding:8px 12px;max-height:220px;overflow:auto}
+#calc .ct{padding:8px 12px;border-top:1px solid var(--line);font-weight:700;color:var(--navy)}
+#calc .ci{display:flex;gap:6px;align-items:center;padding:2px 0;border-bottom:1px dashed var(--line)}
+#calc .ci span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#calc button{padding:2px 7px;font-size:11px}
+@media (max-width:700px){#calc{bottom:70px;right:8px;left:8px;max-width:none}}
+@media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
 .ofwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:6px}
 a.btn{display:inline-block}
@@ -136,6 +151,7 @@ a.btn{display:inline-block}
   </form>
   <div id="view"></div>
 </main>
+<div id="calc" hidden></div>
 <div id="modal" class="modal" hidden><div class="mb" id="mbox"></div></div>
 <script>
 (() => {
@@ -1358,6 +1374,46 @@ async function setAjuste(clave, valor) {
   try { await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave, valor})}); D.ajustesMap[clave] = valor; toast('Guardado'); }
   catch (e) { alert(e.message); }
 }
+
+
+/* ---------------- Calculadora: pinchar horas o montos para sumarlos ---------------- */
+const CALC = new Map(); let calcOpen = true;
+const parseCel = t => { t = (t || '').trim().split('\n')[0]; if (!t || /[\/·%]/.test(t) && !/^-?\$/.test(t)) return null; const neg = /^-/.test(t); const m = t.replace(/[^\d.,]/g, ''); if (!m) return null;
+  const v = +m.replace(/\./g, '').replace(',', '.'); return isFinite(v) ? (neg ? -v : v) : null; };
+function celInfo(el) {
+  const txt = el.innerText, v = parseCel(txt); if (v == null) return null;
+  let unit, lab, rowKey;
+  if (el.closest('.kpi')) { lab = el.closest('.kpi').querySelector('.l').innerText; rowKey = lab; unit = /\$/.test(txt) ? '$' : lab; }
+  else { const td = el.closest('td'), tr = td.parentElement, idx = [...tr.children].indexOf(td), th = td.closest('table').querySelectorAll('thead th')[idx];
+    const col = th ? th.innerText.trim() : ''; rowKey = (tr.children[0].innerText + ' ' + (tr.children[1] ? tr.children[1].innerText : '')).trim().slice(0, 40); lab = rowKey + ' · ' + col;
+    unit = /\$/.test(txt) ? '$' : /hora|cant|acum/i.test(col) ? 'h / cant.' : col || 'n°'; }
+  return {v, unit, lab, key: location.hash + '|' + rowKey + '|' + (el.closest('td') ? [...el.closest('tr').children].indexOf(el.closest('td')) : 'k')};
+}
+document.addEventListener('click', e => {
+  const el = e.target.closest('#view td.n, #view .kpi .v'); if (!el || el.querySelector('input,button') || e.target.closest('a,button,input')) return;
+  const i = celInfo(el); if (!i) return;
+  if (CALC.has(i.key)) CALC.delete(i.key); else CALC.set(i.key, {...i, v: e.shiftKey ? -Math.abs(i.v) : i.v});
+  drawCalc(); markCalc();
+});
+function markCalc() {
+  document.querySelectorAll('#view .csel, #view .cneg').forEach(x => x.classList.remove('csel', 'cneg'));
+  if (!CALC.size) return;
+  document.querySelectorAll('#view td.n, #view .kpi .v').forEach(el => { const i = celInfo(el); if (i && CALC.has(i.key)) el.classList.add(CALC.get(i.key).v < 0 ? 'cneg' : 'csel'); });
+}
+function drawCalc() {
+  const box = $('calc'); if (!CALC.size) { box.hidden = true; return; }
+  const tot = {}; CALC.forEach(x => { tot[x.unit] = (tot[x.unit] || 0) + x.v; });
+  const fmt = (u, v) => u === '$' ? clp(v) : nf(v, 1) + (u === 'h / cant.' ? '' : '');
+  box.hidden = false;
+  box.innerHTML = `<div class="ch" id="cTg">🧮 <b style="flex:1">Calculadora · ${CALC.size} marcado(s)</b><span>${calcOpen ? '▾' : '▸'}</span></div>
+    ${calcOpen ? `<div class="cb">${[...CALC.values()].map((x, k) => `<div class="ci"><span title="${esc(x.lab)}">${esc(x.lab)}</span><b style="${x.v < 0 ? 'color:var(--red)' : ''}">${fmt(x.unit, x.v)}</b><button class="dan" data-cx="${k}">✕</button></div>`).join('')}</div>` : ''}
+    <div class="ct">${Object.entries(tot).map(([u, v]) => `<div class="row"><span style="font-weight:400" class="muted">${u === '$' ? 'Total $' : 'Total ' + esc(u)}</span><span class="sp"></span>${fmt(u, v)}</div>`).join('')}
+    <div class="row" style="margin-top:6px"><span class="small muted" style="font-weight:400">Clic: suma · Shift + clic: resta</span><span class="sp"></span><button id="cCl">Limpiar</button></div></div>`;
+  $('cTg').onclick = () => { calcOpen = !calcOpen; drawCalc(); };
+  $('cCl').onclick = () => { CALC.clear(); drawCalc(); markCalc(); };
+  box.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => { const k = [...CALC.keys()][+b.dataset.cx]; CALC.delete(k); drawCalc(); markCalc(); });
+}
+new MutationObserver(() => { clearTimeout(markCalc.t); markCalc.t = setTimeout(markCalc, 30); }).observe($('view'), {childList: true, subtree: true});
 
 /* ---------------- Inicio de sesión ---------------- */
 function showLogin(msg) { $('login').hidden = false; $('nav').hidden = true; $('logout').hidden = true; $('view').innerHTML = ''; $('lErr').textContent = msg || ''; }
