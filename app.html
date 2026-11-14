@@ -324,6 +324,11 @@ function alertas() {
     if ((a.estado === 'terminado') && (+a.desmovilizacion || 0) > 0 && !c.desmovCobrada)
       L.push({lv: 'red', ic: '🚚', t: `<b>${nom}</b>: servicio terminado, <b>desmovilización ${clp(a.desmovilizacion)} sin cobrar</b>. Incluirla en el EDP final. ${link}`});
   });
+  // cotizaciones enviadas que pasaron su validez
+  (D.cotizaciones || []).filter(c => c.estado === 'enviada').forEach(c => {
+    const env = c.fecha_envio || c.fecha, venc = env ? addDays(env, +c.validez_dias || 10) : null;
+    if (venc && venc < hoy) L.push({lv: 'amber', ic: '📝', t: `<b>Cotización ${esc(nCot(c))}</b> (${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}): su validez venció hace ${days(venc, hoy)} día(s). ¿Se adjudicó o se perdió? Actualice el estado. <a href="#c-${c.id}">Abrir</a>`});
+  });
   const ord = {red: 0, orange: 1, amber: 2, blue: 3, green: 4};
   return L.sort((x, y) => ord[x.lv] - ord[y.lv]);
 }
