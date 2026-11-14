@@ -206,6 +206,8 @@ const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
 const mandante = a => byId('mandantes', a.mandante_id) || {};
 const unidadMod = m => ({hora: 'h', dia: 'días', mes: 'mes', global: 'gl'}[m] || '');
+const verU = (a, v, d = 0) => a.modalidad === 'mes' ? nf(v * 30) : nf(v, d);            // los meses se muestran en días
+const uVer = a => a.modalidad === 'mes' ? 'días' : unidadMod(a.modalidad);
 
 /* ---------------- Cálculos por arriendo ---------------- */
 function calc(a) {
@@ -259,7 +261,7 @@ function alertas() {
       if (c.diasFin < 0) L.push({lv: 'red', ic: '⏰', t: `<b>${nom}</b> (${m}): el período venció el ${fd(a.fecha_fin)}. Registrar prórroga o terminar servicio. ${link}`});
       else if (c.diasFin <= uD) L.push({lv: 'amber', ic: '⏳', t: `<b>${nom}</b> (${m}): termina el ${fd(a.fecha_fin)} (en ${c.diasFin} días). Consultar prórroga o término. ${link}`});
     }
-    if (activo && a.modalidad !== 'hora' && a.modalidad !== 'global' && !c.edpAbierto && c.pend >= c.base) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): ${nf(c.pend)} ${unidadMod(a.modalidad)} sin cobrar. <b>Confeccionar EDP</b>. ${link}`});
+    if (activo && a.modalidad !== 'hora' && a.modalidad !== 'global' && !c.edpAbierto && c.pend >= c.base) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): ${verU(a, c.pend)} ${uVer(a)} sin cobrar. <b>Confeccionar EDP</b>. ${link}`});
     c.pers.filter(p => p.estado !== 'con_oc').forEach(p => {
       const d = p.desde && p.desde <= hoy ? days(p.desde, hoy) : 0;
       L.push({lv: d >= dOc ? 'red' : 'orange', ic: '📄', t: `<b>${nom}</b>: período ${p.n} (${p.tipo === 'inicial' ? 'arriendo inicial' : 'prórroga'}) adjudicado <b>sin OC/SolPed</b>${p.desde ? (p.desde > hoy ? ' (inicia el ' : ' (desde el ') + fd(p.desde) + ')' : ''}. Pedir la OC. ${link}`});
@@ -343,7 +345,7 @@ function vArriendos() {
       <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${estChip(a.estado)}</div>
       <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
       ${a.modalidad === 'global' ? '' : `<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
-      <div class="small">${{hora: 'Horas', dia: 'Días', mes: 'Meses'}[a.modalidad]} del período: <b>${nf(c.pend, a.modalidad === 'mes' ? 1 : 0)} / ${nf(c.base)}</b></div>`}
+      <div class="small">${a.modalidad === 'hora' ? 'Horas' : 'Días'} del período: <b>${verU(a, c.pend)} / ${verU(a, c.base)}</b></div>`}
       <div class="small muted">${a.fecha_fin ? 'Vigente hasta ' + fd(a.fecha_fin) : ''}${c.diasFin != null && ['palabra', 'con_oc'].includes(a.estado) ? ` (${c.diasFin} días)` : ''}</div>
     </div>`; }).join('') || '<div class="muted">No hay arriendos en esta vista.</div>'}</div>`;
   $('fA').value = filtroArr;
@@ -455,14 +457,14 @@ function vArriendo(id) {
   const T = $('tabc');
   if (tabA === 'resumen') {
     T.innerHTML = `<div class="kpis">
-      <div class="kpi"><div class="l">${a.modalidad === 'hora' ? 'Horas registradas' : 'Días transcurridos'}</div><div class="v">${nf(c.avance, 1)}</div></div>
-      <div class="kpi"><div class="l">En EDP</div><div class="v">${nf(c.enEdp, 1)}</div></div>
-      <div class="kpi ${c.pend >= c.base ? 'r' : ''}"><div class="l">Pendiente de cobro</div><div class="v">${nf(c.pend, 1)}</div></div>
+      <div class="kpi"><div class="l">${a.modalidad === 'hora' ? 'Horas registradas' : 'Días transcurridos'}</div><div class="v">${verU(a, c.avance, 1)}</div></div>
+      <div class="kpi"><div class="l">En EDP${a.modalidad === 'mes' ? ' (días)' : ''}</div><div class="v">${verU(a, c.enEdp, 1)}</div></div>
+      <div class="kpi ${c.pend >= c.base ? 'r' : ''}"><div class="l">Pendiente de cobro${a.modalidad === 'mes' ? ' (días)' : ''}</div><div class="v">${verU(a, c.pend, 1)}</div></div>
       <div class="kpi g"><div class="l">Enviado en EDP</div><div class="v">${clp(c.enviado)}</div></div>
       <div class="kpi"><div class="l">Vendido con OC</div><div class="v">${clp(c.vendidoOC)}</div></div>
       <div class="kpi o"><div class="l">Sin OC</div><div class="v">${clp(c.vendidoPal)}</div></div></div>
       ${a.modalidad !== 'global' ? `<div class="card"><b>Avance del período actual</b><div class="bar"><i class="${pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : ''}" style="width:${pct}%"></i></div>
-      <div class="small">${nf(c.pend, 1)} de ${nf(c.base)} ${unidadMod(a.modalidad)}${c.pend >= c.base ? ' · <b>corresponde EDP</b>' : ` · faltan ${nf(c.base - c.pend, 1)}`}</div>
+      <div class="small">${verU(a, c.pend, 1)} de ${verU(a, c.base)} ${uVer(a)}${c.pend >= c.base ? ' · <b>corresponde EDP</b>' : ` · faltan ${verU(a, c.base - c.pend, 1)}`}</div>
       ${c.ultimo ? `<div class="small muted">Último reporte: ${fd(c.ultimo)} · horómetro ${nf(c.ultimoFin, 1)}</div>` : ''}</div>` : ''}`;
   } else if (tabA === 'horo') {
     if (a.modalidad !== 'hora') { T.innerHTML = `<div class="card">Este arriendo se cobra por ${unidadMod(a.modalidad)}. Los días se cuentan solos desde la fecha de inicio (${fd(a.fecha_inicio)}) hasta hoy o hasta el término.</div>`; return; }
