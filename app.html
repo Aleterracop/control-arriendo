@@ -610,6 +610,8 @@ function formEdp(a, e, final) {
       <div><label>Fecha HES</label><input type="date" id="eHf" value="${e.hes_fecha || ''}"></div>` :
       `<div><label>Aprobación del cliente</label><input id="eAp" value="${esc(e.aprobacion || '')}" placeholder="Ej. correo 12-11 de J. Pérez"></div>`}
       <div><label>Entregado a Finanzas</label><input type="date" id="eFi" value="${e.entregado_finanzas || ''}"></div>
+      <div><label>N° factura (opcional, Finanzas)</label><input id="eFa" value="${esc(e.factura || '')}"></div>
+      <div><label>Fecha de pago (opcional, Finanzas)</label><input type="date" id="ePg" value="${e.fecha_pago || ''}"></div>
     </div>
     <div class="big" style="margin-top:12px" id="eTot"></div>
     <div style="margin-top:8px"><label>Notas</label><input id="eNo" value="${esc(e.notas || '')}"></div>
@@ -623,7 +625,7 @@ function formEdp(a, e, final) {
   $('eOk').onclick = () => {
     const o = {arriendo_id: a.id, periodo_id: e.periodo_id || null, n: num(val('eN')), desde: val('eD') || null, hasta: val('eH') || null, cantidad: num(val('eC')), tarifa: num(val('eT')),
       monto_arriendo: (num(val('eC')) || 0) * (num(val('eT')) || 0), monto_mov: num(val('eMv')) || 0, monto_desmov: num(val('eDm')) || 0, monto_otros: num(val('eOt')) || 0,
-      oc: val('eOc') || null, estado: val('eE'), fecha_envio: val('eF') || null, entregado_finanzas: val('eFi') || null, notas: val('eNo') || null};
+      oc: val('eOc') || null, estado: val('eE'), fecha_envio: val('eF') || null, entregado_finanzas: val('eFi') || null, factura: val('eFa') || null, fecha_pago: val('ePg') || null, notas: val('eNo') || null};
     if (a.requiere_hes) Object.assign(o, {hes_estado: val('eHn') ? 'recibida' : val('eHs'), hes_numero: val('eHn') || null, hes_fecha: val('eHf') || null});
     else Object.assign(o, {hes_estado: 'no_aplica', aprobacion: val('eAp') || null});
     if (o.estado !== 'borrador' && !o.oc && !confirm('Este EDP no tiene N° de OC. ¿Guardar igual?')) return;

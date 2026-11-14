@@ -150,7 +150,8 @@
       <select id="hist" hidden title="Ver una carga anterior"></select>
       <label class="btn primary" for="file" id="upBtn">Cargar Excel</label>
       <input id="file" type="file" accept=".xlsx,.xlsm" hidden>
-      <button id="print" type="button">Imprimir / PDF</button>
+      <a class="btn" id="goApp" href="app.html" hidden>Ir a gestión</a>
+<button id="print" type="button">Imprimir / PDF</button>
       <button id="clear" type="button">Borrar datos</button>
       <span class="who" id="who"></span>
       <button id="logout" type="button" hidden>Salir</button>
@@ -176,7 +177,7 @@
     </div>
     <div class="card"><h2>Estado de cobro de los EDP</h2><div class="cap">Monto neto de los EDP registrados según su avance</div><div id="chCobro"></div><div class="legend" id="lgCobro"></div></div>
     <div class="card"><h2>HES pendientes</h2><div class="cap">EDP ya enviados al mandante que todavía no tienen N° de HES</div><div id="pend"></div></div>
-    <div class="card"><h2>Ventas por equipo</h2><div class="cap">Desde la hoja Resumen Ventas</div><div class="tblwrap"><table id="tVentas"></table></div></div>
+    <div class="card"><h2>Ventas por equipo</h2><div class="cap">Vendido, enviado en EDP y por enviar, por equipo</div><div class="tblwrap"><table id="tVentas"></table></div></div>
     <div class="card"><h2>Estados de pago (EDP)</h2><div class="cap">Desde la hoja Seguimiento EP</div>
       <div class="filters noprint">
         <select id="fEq"><option value="">Todos los equipos</option></select>
@@ -487,7 +488,7 @@ function render(state) {
     <tbody>${espera.map(c => `<tr data-d="cartera"><td>${esc(c.cot)}</td><td>${esc(c.mand)}</td><td>${esc(c.serv)}</td>${c.monto ? AMT('cart:' + c.serv + ':m', c.serv + ' · Cotizado', c.monto) : '<td class="n"><span class="chip c-amber">sin monto</span></td>'}<td class="n">${c.prob ? Math.round(c.prob * 100) + '%' : ''}</td>${AMT('cart:' + c.serv + ':p', c.serv + ' · Ponderado', c.pond)}</tr>`).join('')}</tbody>`
     : '<tbody><tr><td class="none">No hay cotizaciones en espera.</td></tr></tbody>';
   markSel();
-  $('foot').textContent = 'Montos netos (sin IVA) salvo "Facturado por cobrar". ' + (CLOUD ? 'Datos publicados en el servidor privado de Terracop; solo usuarios autorizados pueden verlos.' : 'Los datos se leen del Excel en este navegador y no se suben a ningún servidor.');
+  $('foot').textContent = 'Montos netos (sin IVA) salvo "Facturado por cobrar". ' + (CLOUD ? (LIVE ? 'Datos en vivo desde la app de gestión de arriendos (se actualizan al recargar la página).' : 'Datos publicados en el servidor privado de Terracop; solo usuarios autorizados pueden verlos.') : 'Los datos se leen del Excel en este navegador y no se suben a ningún servidor.');
 }
 function renderEdp() {
   if (!STATE) return;
@@ -700,12 +701,30 @@ async function loadHistory(selectId) {
   h.value = String(selectId || rows[0].id);
   await loadSnapshot(h.value);
 }
+var LIVE = false;
+async function loadLive() {
+  try {
+    const data = JSON.parse(JSON.stringify(await api('rpc/resumen_gerencial', {method: 'POST', body: '{}'})), revive);
+    if (!data || !data.edp) return false;
+    data.edp.forEach((e, i) => { e.i = i; });
+    LIVE = true;
+    $('upBtn').hidden = true; $('hist').hidden = true;
+    if ($('goApp')) $('goApp').hidden = !ADMIN;
+    render({file: 'datos en vivo de la app de gestión', loaded: nowTxt(new Date()), data});
+    if ($('msg').textContent === 'Cargando datos…') $('msg').innerHTML = '';
+    return true;
+  } catch (e) {
+    if (e.message === 'SESSION') throw e;
+    return false;   // la función aún no existe: se usa el último Excel publicado
+  }
+}
 async function startCloud() {
   if (!await ensureSession()) return showLogin();
   $('login').hidden = true; $('msg').innerHTML = '<div class="msg info">Cargando datos…</div>';
   try {
     try { ADMIN = !!(await api('rpc/es_admin', {method: 'POST', body: '{}'})); } catch (e) { if (e.message === 'SESSION') throw e; ADMIN = false; }
     setCloudUI();
+    if (await loadLive()) return;   // datos en vivo desde la app de gestión
     await loadHistory();
     if ($('msg').textContent === 'Cargando datos…') $('msg').innerHTML = '';
   } catch (err) { cloudError(err); }

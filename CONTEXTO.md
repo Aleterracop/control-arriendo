@@ -3,7 +3,7 @@
 Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversación nueva, pedir: *"lee CONTEXTO.md del repo Aleterracop/control-arriendo"*.
 
 ## Qué es
-- **index.html**: panel gerencial (solo lectura) para don Nelson, gerente de Finanzas. Se alimenta subiendo el Excel de control; guarda snapshots en Supabase.
+- **index.html**: panel gerencial (solo lectura) para don Nelson, gerente de Finanzas. Lee los datos EN VIVO desde la app mediante la función `resumen_gerencial()` (sin costos ni utilidades). Si la función no existe, usa el último Excel publicado (snapshots).
 - **app.html**: app de gestión para Alejandro Osorio Correa (Encargado de Gestión Comercial y Control). Solo admin (`es_admin()`).
 - Hosting: GitHub Pages (`aleterracop.github.io/control-arriendo/`). Base de datos y login: Supabase (proyecto `noauwcqdxkvnbnyhqhed`), RLS en todas las tablas.
 
@@ -13,6 +13,7 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 3. `sql/03_cotizador.sql`: tablas cotizaciones y ajustes (firma, datos de empresa) + cotizaciones 1265 y 1322.
 4. `sql/04_cotizaciones_historicas.sql`: crea cotizaciones adjudicadas desde los arriendos (1248, 1296, 1307, 1310).
 5. `sql/05_conteo_dias.sql`: columna `arriendos.conteo_dias` (corridos | reportados).
+6. `sql/06_resumen_gerencial.sql`: función security definer `resumen_gerencial()` que alimenta el panel gerencial en vivo.
 
 ## Funciones de app.html
 - **Inicio**: KPI y avisos "Qué hacer hoy":
@@ -49,7 +50,6 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 
 ## Pendiente
 - EDP automático con formato Fenix: portada + "Estado Pago Contratista" (contrato, avance anterior, avance del período, acumulado, IVA) + respaldo de horómetros. Ejemplo recibido: EDP N°00001 OC 4300002595.
-- Panel de don Nelson leyendo datos en vivo (vista o RPC security definer), sin subir Excel.
 - Avisos diarios por correo.
 - Confirmar patente: HSZC-48 vs HS2C-48.
 - Respaldo del EDP N°1 con posibles errores de tipeo:
