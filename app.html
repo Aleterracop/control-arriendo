@@ -201,6 +201,7 @@ async function loadAll() {
   try { const [c, a] = await Promise.all([api('cotizaciones?select=*&limit=10000'), api('ajustes?select=*')]); D.cotizaciones = c || []; D.ajustesMap = {}; (a || []).forEach(x => { D.ajustesMap[x.clave] = x.valor; }); D.sinCot = false; }
   catch (e) { if (e.message === 'SESSION') throw e; D.cotizaciones = []; D.ajustesMap = {}; D.sinCot = true; }
   D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
+  D.hasConteo = D.arriendos.some(a => 'conteo_dias' in a);
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -230,10 +231,16 @@ function calc(a) {
     avance = enEdp; pend = 0;
   } else {
     const fin = a.fecha_fin && a.fecha_fin < hoy ? a.fecha_fin : hoy, k = a.modalidad === 'mes' ? 30 : 1;
-    if (a.fecha_inicio && fin >= a.fecha_inicio) avance = (days(a.fecha_inicio, fin) + 1) / k;
-    const ini = corte ? addDays(corte, 1) : a.fecha_inicio;
-    pend = ini && fin >= ini ? (days(ini, fin) + 1) / k : 0;
+    if (hor.length) { const u = hor[hor.length - 1]; ultimo = u.fecha; ultimoFin = u.h_fin; }
+    if (a.conteo_dias === 'reportados') {                     // se cobran los días con reporte
+      avance = hor.length / k; pend = hor.filter(h => !corte || h.fecha > corte).length / k;
+    } else {                                                  // días corridos
+      if (a.fecha_inicio && fin >= a.fecha_inicio) avance = (days(a.fecha_inicio, fin) + 1) / k;
+      const ini = corte ? addDays(corte, 1) : a.fecha_inicio;
+      pend = ini && fin >= ini ? (days(ini, fin) + 1) / k : 0;
+    }
   }
+  const horasReg = hor.reduce((t, h) => { const d = (+h.h_fin || 0) - (+h.h_ini || 0); return t + (h.h_fin != null && h.h_ini != null && d > 0 ? d : 0); }, 0);
   const monto = e => (+e.monto_arriendo || 0) + (+e.monto_mov || 0) + (+e.monto_desmov || 0) + (+e.monto_otros || 0);
   const enviado = edps.filter(e => e.estado !== 'borrador').reduce((s, e) => s + monto(e), 0);
   const vendidoOC = pers.filter(p => p.estado === 'con_oc').reduce((s, p) => s + (+p.cantidad || 0) * (+p.tarifa || 0), 0);
@@ -242,7 +249,7 @@ function calc(a) {
   const desmovCobrada = edps.some(e => (+e.monto_desmov || 0) > 0);
   const movCobrada = edps.some(e => (+e.monto_mov || 0) > 0);
   const diasFin = a.fecha_fin ? days(hoy, a.fecha_fin) : null;
-  return {edpAbierto, hor, edps, pers, base, avance, enEdp, pend, enviado, vendidoOC, vendidoPal, movTot, desmovCobrada, movCobrada, diasFin, ultimo, ultimoFin, monto};
+  return {horasReg, edpAbierto, hor, edps, pers, base, avance, enEdp, pend, enviado, vendidoOC, vendidoPal, movTot, desmovCobrada, movCobrada, diasFin, ultimo, ultimoFin, monto};
 }
 
 /* ---------------- Alertas ---------------- */
@@ -257,6 +264,7 @@ function alertas() {
       else if (c.pend >= c.base * uH) L.push({lv: 'amber', ic: '🟡', t: `<b>${nom}</b> (${m}): va en ${nf(c.pend)} de ${nf(c.base)} h. <b>Avisar al mandante</b>: ¿prórroga o término? ${link}`});
       if (c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último horómetro registrado el ${fd(c.ultimo)}. ${link}`});
     }
+    if (activo && a.modalidad !== 'hora' && a.conteo_dias === 'reportados' && c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último reporte diario registrado el ${fd(c.ultimo)}. ${link}`});
     if (activo && c.diasFin != null) {
       if (c.diasFin < 0) L.push({lv: 'red', ic: '⏰', t: `<b>${nom}</b> (${m}): el período venció el ${fd(a.fecha_fin)}. Registrar prórroga o terminar servicio. ${link}`});
       else if (c.diasFin <= uD) L.push({lv: 'amber', ic: '⏳', t: `<b>${nom}</b> (${m}): termina el ${fd(a.fecha_fin)} (en ${c.diasFin} días). Consultar prórroga o término. ${link}`});
@@ -383,6 +391,7 @@ function formArriendo(a) {
     <div><label>Vigente hasta (OC / período)</label><input id="fFf" type="date" value="${a.fecha_fin || ''}"></div>
     <div><label>Estado</label><select id="fEs">${[['cotizado', 'Cotizado'], ['palabra', 'Adjudicado de palabra (sin OC)'], ['con_oc', 'Con OC / SolPed'], ['terminado', 'Terminado'], ['cerrado', 'Cerrado']].map(([k, l]) => `<option value="${k}" ${a.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     ${nuevo ? `<div><label>N° OC / SolPed (si ya llegó)</label><input id="fOc"></div>` : ''}
+    <div><label>Conteo de días (solo cobro por día o mes)</label><select id="fCd"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte</option></select></div>
     <div><label>¿Requiere HES?</label><select id="fHe"><option value="1" ${a.requiere_hes ? 'selected' : ''}>Sí (minera / empresa)</option><option value="0" ${!a.requiere_hes ? 'selected' : ''}>No (particular: aprobación)</option></select></div>
   </div>
   <div style="margin-top:10px"><label>Notas</label><textarea id="fNo">${esc(a.notas || '')}</textarea></div>
@@ -417,6 +426,7 @@ function formArriendo(a) {
     const o = {flota_id: val('fFl') || null, descripcion: val('fDe'), mandante_id: val('fMa') || null, cotizacion: val('fCo') || null, modalidad: val('fMo'),
       tarifa: num(val('fTa')), base_cobro: num(val('fBa')), movilizacion: num(val('fMv')) || 0, desmovilizacion: num(val('fDm')) || 0, operador: val('fOp') || null,
       fecha_inicio: val('fFi') || null, fecha_fin: val('fFf') || null, estado: val('fEs'), requiere_hes: val('fHe') === '1', notas: val('fNo') || null};
+    if (D.hasConteo) o.conteo_dias = val('fCd');
     guardar(async () => {
       if (nuevo) {
         const r = await ins('arriendos', o);
@@ -448,7 +458,7 @@ function vArriendo(id) {
       <button class="sm pri" id="bEdp">+ Nuevo EDP</button>
     </div>
   </div>
-  <div class="tabs">${[['resumen', 'Resumen'], ['horo', a.modalidad === 'hora' ? 'Horómetros' : 'Días'], ['per', 'Períodos'], ['edp', 'EDP y HES']].map(([k, l]) => `<button data-t="${k}" class="${tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="tabs">${[['resumen', 'Resumen'], ['horo', a.modalidad === 'hora' ? 'Horómetros' : 'Días y reportes'], ['per', 'Períodos'], ['edp', 'EDP y HES']].map(([k, l]) => `<button data-t="${k}" class="${tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
   <div id="tabc"></div>`;
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tabA = b.dataset.t; vArriendo(id); });
   $('edA').onclick = () => formArriendo(a);
@@ -465,28 +475,35 @@ function vArriendo(id) {
       <div class="kpi o"><div class="l">Sin OC</div><div class="v">${clp(c.vendidoPal)}</div></div></div>
       ${a.modalidad !== 'global' ? `<div class="card"><b>Avance del período actual</b><div class="bar"><i class="${pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : ''}" style="width:${pct}%"></i></div>
       <div class="small">${verU(a, c.pend, 1)} de ${verU(a, c.base)} ${uVer(a)}${c.pend >= c.base ? ' · <b>corresponde EDP</b>' : ` · faltan ${verU(a, c.base - c.pend, 1)}`}</div>
-      ${c.ultimo ? `<div class="small muted">Último reporte: ${fd(c.ultimo)} · horómetro ${nf(c.ultimoFin, 1)}</div>` : ''}</div>` : ''}`;
+      ${c.ultimo ? `<div class="small muted">Último reporte: ${fd(c.ultimo)}${c.ultimoFin != null ? ' · horómetro ' + nf(c.ultimoFin, 1) : ''}${a.modalidad !== 'hora' && c.horasReg ? ' · ' + nf(c.horasReg, 1) + ' h registradas' : ''}</div>` : ''}${a.modalidad !== 'hora' ? `<div class="small muted">Conteo: ${a.conteo_dias === 'reportados' ? 'días con reporte' : 'días corridos'}</div>` : ''}</div>` : ''}`;
   } else if (tabA === 'horo') {
-    if (a.modalidad !== 'hora') { T.innerHTML = `<div class="card">Este arriendo se cobra por ${unidadMod(a.modalidad)}. Los días se cuentan solos desde la fecha de inicio (${fd(a.fecha_inicio)}) hasta hoy o hasta el término.</div>`; return; }
-    const last = c.hor[c.hor.length - 1];
-    T.innerHTML = `<div class="card"><h2>Registrar horómetro</h2>
+    if (a.modalidad === 'global') { T.innerHTML = '<div class="card">Este servicio es a suma global: no lleva horómetro ni conteo de días.</div>'; return; }
+    const esHora = a.modalidad === 'hora', last = c.hor[c.hor.length - 1], lastH = c.hor.slice().reverse().find(h => h.h_fin != null);
+    T.innerHTML = `${esHora ? '' : `<div class="card"><div class="row"><h2 style="margin:0">¿Cómo se cuentan los días?</h2><span class="sp"></span>
+        <select id="hCnt" style="width:auto"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos (calendario, desde el inicio)</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte (solo los días registrados abajo)</option></select></div>
+        <div class="small muted" style="margin-top:6px">${a.conteo_dias === 'reportados' ? `Se cobran los días registrados abajo: van <b>${c.hor.length}</b>.` : `Se cuentan solos desde el ${fd(a.fecha_inicio)}: van <b>${verU(a, c.avance)}</b> días. Los reportes de abajo son solo de respaldo (opcional).`}${c.horasReg ? ` · Horas registradas en horómetro: <b>${nf(c.horasReg, 1)} h</b>.` : ''}</div></div>`}
+      <div class="card"><h2>${esHora ? 'Registrar horómetro' : 'Registrar reporte diario'}</h2>
       <div class="f"><div><label>Fecha</label><input type="date" id="hF" value="${todayISO()}"></div>
       <div><label>N° report</label><input id="hR" value="${last && /^\d+$/.test(last.n_report || '') ? (+last.n_report + 1) : ''}"></div>
-      <div><label>Horómetro inicial</label><input id="hI" inputmode="decimal" value="${last ? last.h_fin : ''}"></div>
-      <div><label>Horómetro final</label><input id="hX" inputmode="decimal"></div>
+      <div><label>Horómetro inicial${esHora ? '' : ' (opcional)'}</label><input id="hI" inputmode="decimal" value="${lastH ? lastH.h_fin : ''}"></div>
+      <div><label>Horómetro final${esHora ? '' : ' (opcional)'}</label><input id="hX" inputmode="decimal"></div>
       <div><label>Observación</label><input id="hO" placeholder="Lluvia, mantención, sin operación…"></div></div>
+      ${esHora ? '' : '<div class="small muted" style="margin-top:6px">Equipos sin horómetro (como el martillo): deje los horómetros vacíos y registre solo la fecha.</div>'}
       <div class="row" style="margin-top:10px"><span id="hMsg" class="small"></span><span class="sp"></span><button class="pri" id="hOk">Guardar</button></div></div>
       <div class="card tw"><table><thead><tr><th>Fecha</th><th>N° report</th><th class="n">Inicial</th><th class="n">Final</th><th class="n">Horas</th><th>Observación</th><th></th></tr></thead><tbody>
-      ${c.hor.slice().reverse().map(h => `<tr><td>${fd(h.fecha)}</td><td>${esc(h.n_report || '')}</td><td class="n">${nf(h.h_ini, 1)}</td><td class="n">${nf(h.h_fin, 1)}</td><td class="n"><b>${nf((+h.h_fin || 0) - (+h.h_ini || 0), 1)}</b></td><td class="small">${esc(h.obs || '')}</td><td><button class="sm dan" data-dh="${h.id}">✕</button></td></tr>`).join('')}
+      ${c.hor.slice().reverse().map(h => `<tr><td>${fd(h.fecha)}</td><td>${esc(h.n_report || '')}</td><td class="n">${h.h_ini != null ? nf(h.h_ini, 1) : '—'}</td><td class="n">${h.h_fin != null ? nf(h.h_fin, 1) : '—'}</td><td class="n"><b>${h.h_ini != null && h.h_fin != null ? nf(h.h_fin - h.h_ini, 1) : '—'}</b></td><td class="small">${esc(h.obs || '')}</td><td><button class="sm dan" data-dh="${h.id}">✕</button></td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin registros.</td></tr>'}
       </tbody></table></div>`;
-    const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h`) : (last && i != null && i !== +last.h_fin ? `⚠ El inicial no coincide con el último final (${nf(last.h_fin, 1)}).` : ''); };
+    const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h`) : (lastH && i != null && i !== +lastH.h_fin ? `⚠ El inicial no coincide con el último final (${nf(lastH.h_fin, 1)}).` : ''); };
     $('hI').oninput = chk; $('hX').oninput = chk;
+    if ($('hCnt')) $('hCnt').onchange = () => { if (!D.hasConteo) return alert('Para usar esta opción ejecute primero sql/05_conteo_dias.sql en Supabase.'); guardar(() => upd('arriendos', a.id, {conteo_dias: val('hCnt')}), 'Conteo de días actualizado'); };
     $('hOk').onclick = () => {
       const o = {arriendo_id: a.id, fecha: val('hF'), n_report: val('hR') || null, h_ini: num(val('hI')), h_fin: num(val('hX')), obs: val('hO') || null};
-      if (!o.fecha || o.h_ini == null || o.h_fin == null) return alert('Complete fecha, horómetro inicial y final (si no trabajó, ponga el mismo valor).');
-      if (o.h_fin < o.h_ini) return alert('El horómetro final no puede ser menor que el inicial.');
+      if (!o.fecha) return alert('Escriba la fecha.');
+      if (esHora && (o.h_ini == null || o.h_fin == null)) return alert('Complete horómetro inicial y final (si no trabajó, ponga el mismo valor).');
+      if ((o.h_ini == null) !== (o.h_fin == null)) return alert('Complete los dos horómetros (inicial y final) o deje ambos vacíos.');
+      if (o.h_fin != null && o.h_fin < o.h_ini) return alert('El horómetro final no puede ser menor que el inicial.');
       if (c.hor.some(h => h.fecha === o.fecha)) return alert('Ya hay un registro para esa fecha. Bórrelo primero si quiere corregirlo.');
-      guardar(() => ins('horometros', o), 'Horómetro guardado');
+      guardar(() => ins('horometros', o), esHora ? 'Horómetro guardado' : 'Reporte guardado');
     };
     T.querySelectorAll('[data-dh]').forEach(b => b.onclick = () => { if (confirm('¿Borrar este registro?')) guardar(() => del('horometros', b.dataset.dh), 'Registro borrado'); });
   } else if (tabA === 'per') {
