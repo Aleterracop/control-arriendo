@@ -1209,8 +1209,9 @@ function asistenteEquipo() {
     <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Elegir —')}</select></div>
     <div><label>Costo equipo ($ por unidad)</label><input id="wTa" inputmode="numeric" placeholder="del catálogo"></div>
     <div><label>Cobro por</label><select id="wU"><option value="hm">Hora máquina (hm)</option><option value="día">Día</option><option value="mes">Mes</option></select></div>
-    <div><label>Cantidad a cotizar</label><input id="wQ" inputmode="decimal" value="180"></div>
+    <div><label id="wQl">Cantidad a cotizar (horas)</label><input id="wQ" inputmode="decimal" value="180"></div>
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
+    <div><label>Horas por día (6 = 180 h ÷ 30 días)</label><input id="wHd" inputmode="decimal" value="${nf(P('horas_dia', P('horas_mes', 180) / 30))}"></div>
     <div><label>Operador</label><select id="wO"><option value="">Sin operador</option>${ops.map(p => `<option value="${p.id}">${esc(p.cargo)} · ${clp(p.valor_hh)}/HH</option>`).join('')}</select></div>
     <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option></select></div>
     <div><label>Días en faena</label><input id="wD" inputmode="numeric"></div>
@@ -1218,38 +1219,58 @@ function asistenteEquipo() {
     <div><label>Combustible</label><select id="wCo"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
     <div><label>Movilización $ por viaje</label><input id="wMv" inputmode="numeric" placeholder="0 = sin movilización"></div>
     <div><label>Utilidad %</label><input id="wUt" inputmode="decimal" value="${nf((COT.utilidad ?? P('utilidad', 0.2)) * 100, 2)}"></div>
+    <div><label>Recargo arriendo corto % (opcional)</label><input id="wRc" inputmode="decimal" value="0"></div>
   </div>
+  <div id="wConv" class="small muted" style="margin-top:6px"></div>
   <div style="margin-top:10px"><label>Descripción del ítem</label><input id="wDe"></div>
   <div id="wR" style="margin-top:10px"></div>
   <div class="mf"><button id="wCan">Cancelar</button><button class="pri" id="wOk">Agregar a la cotización</button></div>`);
   let res = null;
   const t = () => byId('equipo_tipos', val('wT'));
-  const diasDef = () => { const q = num(val('wQ')) || 0, u = val('wU'), tu = val('wTu'); const meses = u === 'hm' ? q / P('horas_mes', 180) : u === 'mes' ? q : q / 30; return u === 'día' ? q : Math.round(meses * (tu === '5x2' ? 22 : 30)); };
+  const diasDef = () => { const q = num(val('wQ')) || 0, u = val('wU'), tu = val('wTu'), hd = num(val('wHd')) || 6; if (u === 'día') return q; if (u === 'hm' && q < P('horas_mes', 180)) return Math.ceil(q / hd); const meses = u === 'hm' ? q / P('horas_mes', 180) : q; return Math.round(meses * (tu === '5x2' ? 22 : 30)); };
   const calc = () => {
     const T = t(), q = num(val('wQ')) || 0, n = num(val('wN')) || 1, u = val('wU'), tar = num(val('wTa')) || 0, o = byId('personal', val('wO')), d = num(val('wD')) ?? diasDef(), ut = (num(val('wUt')) || 0) / 100;
-    const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * 9;
+    const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6);
     const rows = [];
     if (T) rows.push({c: 'Equipo ' + T.nombre, u, q: q * n, p: tar});
     if (o) rows.push({c: o.cargo + (val('wTu') !== '5x2' ? ' (turno ' + val('wTu') + ', operadores en rotación)' : ''), u: 'HH', q: Math.max(hrs, u === 'hm' ? 0 : hrs) * n, p: Math.round(+o.valor_hh || 0)});
     if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
-    const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, precio = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut));
+    const rc = (num(val('wRc')) || 0) / 100;
+    const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, precio = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
     res = {rows, cu, precio, cant, u};
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi g"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>`;
   };
-  $('wT').onchange = () => { const T = t(); if (!T) return; $('wTa').value = T.tarifa ? Math.round(T.tarifa) : ''; $('wU').value = T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm';
-    const op = D.personal.find(p => /operador/i.test(p.cargo) && T.nombre.split(' ')[0].length > 3 && p.cargo.toLowerCase().includes(T.nombre.split(' ')[0].toLowerCase().slice(0, 6))); if (op) $('wO').value = op.id;
-    $('wDe').value = `Arriendo de ${T.nombre.toLowerCase()} o similar${val('wO') ? ' con operador' : ''}${$('wU').value === 'hm' ? ` con ${val('wQ')} [HM] mínimas mensuales` : ''}`;
-    if (!T.tarifa) toast('Este equipo no tiene tarifa: escriba el costo a mano'); $('wD').placeholder = diasDef(); calc(); };
-  ['wTa', 'wU', 'wQ', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt'].forEach(k => $(k).oninput = $(k).onchange = () => { $('wD').placeholder = diasDef(); calc(); });
-  if ($('wT').onchange) { /* noop */ }
-  $('wT').addEventListener('change', calc);
+  // conversión entre unidades: 1 mes = 30 días = horas_mes hm
+  // conversión: 1 mes = 30 días (calendario) · 1 día = horas por día (jornada) · 1 mes = horas_mes hm
+  const conv = (v, de, a) => { const hd = num(val('wHd')) || 6, hm = P('horas_mes', 180);
+    const k = {'mes>día': 1 / 30, 'día>mes': 30, 'mes>hm': 1 / hm, 'hm>mes': hm, 'día>hm': 1 / hd, 'hm>día': hd}[de + '>' + a]; return de === a ? v : v * (k || 1); };
+  const QDEF = {hm: 180, 'día': 30, mes: 1}, ULAB = {hm: 'horas', 'día': 'días', mes: 'meses'};
+  let tarCat = null, uCat = null, qTocada = false;
+  const desc = () => { const T = t(); if (!T) return; const u = val('wU'), q = val('wQ');
+    $('wDe').value = `Arriendo de ${T.nombre.toLowerCase()} o similar${val('wO') ? ' con operador' : ''}${u === 'hm' ? (+q === P('horas_mes', 180) ? ` con ${q} [HM] mínimas mensuales` : ` por ${q} [HM]`) : u === 'día' ? ` por ${q} día(s)` : ` por ${q} mes(es)`}`; };
+  const unidad = () => { const u = val('wU');
+    $('wQl').textContent = `Cantidad a cotizar (${ULAB[u]})`;
+    if (!qTocada) $('wQ').value = QDEF[u];
+    if (tarCat) { const cv = conv(tarCat, uCat, u); $('wTa').value = Math.round(cv);
+      const how = {'mes>día': 'mes ÷ 30', 'día>mes': 'día × 30', 'mes>hm': `mes ÷ ${P('horas_mes', 180)} h`, 'hm>mes': `hora × ${P('horas_mes', 180)}`, 'día>hm': `día ÷ ${val('wHd')} h`, 'hm>día': `hora × ${val('wHd')} h`}[uCat + '>' + u];
+      $('wConv').innerHTML = u !== uCat ? `Costo convertido desde el catálogo: ${clp(tarCat)} / ${uCat} → <b>${clp(cv)} / ${u}</b> (${how}). Para arriendos cortos puede agregar un recargo.` : ''; }
+    desc(); };
+  $('wT').onchange = () => { const T = t(); if (!T) return; tarCat = T.tarifa ? +T.tarifa : null; uCat = T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm';
+    $('wU').value = uCat; qTocada = false;
+    const op = D.personal.find(p => /operador/i.test(p.cargo) && T.nombre.split(' ')[0].length > 3 && p.cargo.toLowerCase().includes(T.nombre.split(' ')[0].toLowerCase().slice(0, 6))); $('wO').value = op ? op.id : '';
+    if (!T.tarifa) { $('wTa').value = ''; toast('Este equipo no tiene tarifa: escriba el costo a mano'); }
+    unidad(); $('wD').placeholder = diasDef(); calc(); };
+  $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
+  ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
+  $('wU').onchange = () => { unidad(); $('wD').placeholder = diasDef(); calc(); };
+  $('wQ').oninput = () => { qTocada = true; desc(); $('wD').placeholder = diasDef(); calc(); };
   $('wCan').onclick = closeModal;
   $('wOk').onclick = async () => {
     const T = t(); if (!T) return alert('Elija el tipo de equipo.');
     if (!num(val('wTa'))) return alert('Escriba el costo del equipo.');
-    if (!T.tarifa && confirm(`¿Guardar ${clp(num(val('wTa')))} como tarifa de "${T.nombre}" en el catálogo?`)) { try { await upd('equipo_tipos', T.id, {tarifa: num(val('wTa')), tarifa_fecha: todayISO()}); T.tarifa = num(val('wTa')); } catch (e) { alert(e.message); } }
+    if (!T.tarifa && val('wU') === (T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm') && confirm(`¿Guardar ${clp(num(val('wTa')))} como tarifa de "${T.nombre}" en el catálogo?`)) { try { await upd('equipo_tipos', T.id, {tarifa: num(val('wTa')), tarifa_fecha: todayISO()}); T.tarifa = num(val('wTa')); } catch (e) { alert(e.message); } }
     calc();
     const c = COT, gA = c.items.find(i => i.tipo === 'g') ? c.items.filter(i => i.tipo === 'g')[0].item : (c.items.unshift({tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}), 'A');
     let pos = c.items.findIndex(i => i.tipo === 'g' && i.item === gA) + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
