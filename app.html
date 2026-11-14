@@ -1200,6 +1200,20 @@ function formAPU(i) {
   draw();
 }
 
+/* ---------- Último precio cotizado de un equipo (historial) ---------- */
+const normTxt = t => (t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+function ultimoPrecio(T, excluirId) {
+  const pal = normTxt(T.nombre).split(/\s+/).filter(w => w.length > 2 || /\d/.test(w)).slice(0, 2);
+  const casa = d => { const n = normTxt(d); return pal.every(w => n.includes(w)); };
+  const L = [];
+  D.cotizaciones.filter(c => c.id !== excluirId && c.estado !== 'anulada').forEach(c => (c.items || []).forEach(it => {
+    if (it.tipo === 'i' && !it.oculto && +it.precio && (it.equipo_tipo_id === T.id || casa(it.desc))) L.push({precio: +it.precio, unidad: (it.unidad || '').toLowerCase(), fecha: c.fecha, origen: `Cot. ${nCot(c)}`, mand: c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '', estado: c.estado});
+  }));
+  D.arriendos.forEach(a => { const f = byId('flota', a.flota_id); if (+a.tarifa && ((f && f.tipo_id === T.id) || casa(a.descripcion)))
+    L.push({precio: +a.tarifa, unidad: {hora: 'hm', dia: 'día', mes: 'mes', global: 'gl'}[a.modalidad], fecha: a.fecha_inicio, origen: 'Arriendo ' + (a.cotizacion || ''), mand: mandante(a).nombre || '', estado: 'adjudicado'}); });
+  return L.sort((x, y) => (y.fecha || '').localeCompare(x.fecha || ''));
+}
+
 /* ---------- Asistente: agregar equipo del catálogo ---------- */
 function asistenteEquipo() {
   const tipos = D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), ops = D.personal.filter(p => /operador/i.test(p.cargo)).sort((x, y) => x.cargo.localeCompare(y.cargo));
@@ -1220,7 +1234,9 @@ function asistenteEquipo() {
     <div><label>Movilización $ por viaje</label><input id="wMv" inputmode="numeric" placeholder="0 = sin movilización"></div>
     <div><label>Utilidad %</label><input id="wUt" inputmode="decimal" value="${nf((COT.utilidad ?? P('utilidad', 0.2)) * 100, 2)}"></div>
     <div><label>Recargo arriendo corto % (opcional)</label><input id="wRc" inputmode="decimal" value="0"></div>
+    <div><label>Precio a cobrar ($ / unidad · vacío = sugerido)</label><input id="wP" inputmode="numeric" placeholder="sugerido"></div>
   </div>
+  <div id="wRef" style="margin-top:8px"></div>
   <div id="wConv" class="small muted" style="margin-top:6px"></div>
   <div style="margin-top:10px"><label>Descripción del ítem</label><input id="wDe"></div>
   <div id="wR" style="margin-top:10px"></div>
@@ -1237,9 +1253,18 @@ function asistenteEquipo() {
     if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
     const rc = (num(val('wRc')) || 0) / 100;
-    const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, precio = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
+    const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, sugerido = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
+    const precio = num(val('wP')) || sugerido;
+    // referencia histórica
+    if (T) { const H = ultimoPrecio(T, COT.id), h = H.find(x => x.unidad === u) || H[0];
+      if (h) { const pv = h.unidad === u ? h.precio : (['hm', 'día', 'mes'].includes(h.unidad) ? Math.round(conv(h.precio, h.unidad, u)) : null);
+        $('wRef').innerHTML = `<div class="msg info small" style="margin:0">📌 <b>Último precio cotizado:</b> ${clp(h.precio)} / ${esc(h.unidad)} · ${esc(h.origen)} · ${esc(h.mand)} · ${fd(h.fecha)} (${esc(h.estado)})${pv && h.unidad !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
+          ${pv ? ` <button class="sm" id="wUseRef" style="margin-left:6px">Usar ${clp(pv)}</button>` : ''}${H.length > 1 ? `<div class="muted" style="margin-top:3px">Otros: ${H.slice(1, 4).map(x => `${clp(x.precio)}/${esc(x.unidad)} (${esc(x.origen)})`).join(' · ')}</div>` : ''}</div>`;
+        if ($('wUseRef')) $('wUseRef').onclick = () => { $('wP').value = pv; calc(); }; }
+      else $('wRef').innerHTML = '<div class="small muted">Sin cotizaciones anteriores de este equipo.</div>'; }
     res = {rows, cu, precio, cant, u};
-    $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi g"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div></div>
+    const utilT = (precio - cu) * cant;
+    $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>`;
   };
   // conversión entre unidades: 1 mes = 30 días = horas_mes hm
@@ -1263,7 +1288,7 @@ function asistenteEquipo() {
     if (!T.tarifa) { $('wTa').value = ''; toast('Este equipo no tiene tarifa: escriba el costo a mano'); }
     unidad(); $('wD').placeholder = diasDef(); calc(); };
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
-  ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
+  ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
   $('wU').onchange = () => { unidad(); $('wD').placeholder = diasDef(); calc(); };
   $('wQ').oninput = () => { qTocada = true; desc(); $('wD').placeholder = diasDef(); calc(); };
   $('wCan').onclick = closeModal;
