@@ -202,6 +202,8 @@ async function loadAll() {
   catch (e) { if (e.message === 'SESSION') throw e; D.cotizaciones = []; D.ajustesMap = {}; D.sinCot = true; }
   D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
   D.hasConteo = D.arriendos.some(a => 'conteo_dias' in a);
+  D.hasEstado = D.horometros.some(h => 'estado' in h);
+  D.hasFallas = D.arriendos.some(a => 'descuenta_fallas' in a);
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -221,23 +223,40 @@ function calc(a) {
   const enEdp = edps.reduce((s, e) => s + (+e.cantidad || 0), 0);
   const corte = edps.reduce((m, e) => (e.hasta && e.hasta < hoy && (!m || e.hasta > m)) ? e.hasta : m, null);   // último corte ya cerrado
   const edpAbierto = edps.find(e => !e.hasta || e.hasta >= hoy) || null;   // EDP que cubre el período en curso
-  let pend;
+  let pend, arrastre = 0;
+  const cortes = [];                         // detalle de cada corte de EDP cerrado
+  const hrs = h => { const d = (+h.h_fin || 0) - (+h.h_ini || 0); return h.h_fin != null && h.h_ini != null && d > 0 ? d : 0; };
+  const NOCOBRA = a.descuenta_fallas ? ['falla_terracop', 'taller'] : [];
+  let baseEf = base, diasFalla = 0;
   if (a.modalidad === 'hora') {
-    let desdeCorte = 0;
-    hor.forEach(h => { const d = (+h.h_fin || 0) - (+h.h_ini || 0); if (d > 0) { avance += d; if (!corte || h.fecha > corte) desdeCorte += d; } });
+    hor.forEach(h => { avance += hrs(h); });
     if (hor.length) { const u = hor[hor.length - 1]; ultimo = u.fecha; ultimoFin = u.h_fin; }
-    pend = desdeCorte;                       // horas trabajadas después del último EDP (el mínimo cobrado no se arrastra)
+    // Horas que pasan al siguiente período: si se trabajó más de lo cobrado, la diferencia se arrastra;
+    // si se trabajó menos (mínimo cobrado), no se descuenta.
+    let prev = null;
+    edps.filter(e => e.hasta && e.hasta < hoy).sort((x, y) => x.hasta.localeCompare(y.hasta)).forEach(e => {
+      const trab = hor.filter(h => (!prev || h.fecha > prev) && h.fecha <= e.hasta).reduce((t, h) => t + hrs(h), 0);
+      const tot = trab + arrastre, nuevo = Math.max(0, Math.round((tot - (+e.cantidad || 0)) * 10) / 10);
+      cortes.push({edp: e, trab, previo: arrastre, cobrado: +e.cantidad || 0, arrastre: nuevo});
+      arrastre = nuevo; prev = e.hasta;
+    });
+    pend = arrastre + hor.filter(h => !prev || h.fecha > prev).reduce((t, h) => t + hrs(h), 0);
+    if (a.descuenta_fallas) {   // mínimo proporcional: se descuenta base/30 por cada día de falla Terracop o taller del período en curso
+      diasFalla = hor.filter(h => ['falla_terracop', 'taller'].includes(h.estado) && (!prev || h.fecha > prev)).length;
+      baseEf = Math.max(0, Math.round((base - base / 30 * diasFalla) * 10) / 10);
+    }
   } else if (a.modalidad === 'global') {
     avance = enEdp; pend = 0;
   } else {
     const fin = a.fecha_fin && a.fecha_fin < hoy ? a.fecha_fin : hoy, k = a.modalidad === 'mes' ? 30 : 1;
     if (hor.length) { const u = hor[hor.length - 1]; ultimo = u.fecha; ultimoFin = u.h_fin; }
-    if (a.conteo_dias === 'reportados') {                     // se cobran los días con reporte
-      avance = hor.length / k; pend = hor.filter(h => !corte || h.fecha > corte).length / k;
-    } else {                                                  // días corridos
-      if (a.fecha_inicio && fin >= a.fecha_inicio) avance = (days(a.fecha_inicio, fin) + 1) / k;
+    const cobra = hor.filter(h => !NOCOBRA.includes(h.estado));
+    if (a.conteo_dias === 'reportados') {                     // se cobran los días con reporte (sin fallas Terracop ni taller)
+      avance = cobra.length / k; pend = cobra.filter(h => !corte || h.fecha > corte).length / k;
+    } else {                                                  // días corridos, descontando fallas Terracop y taller
+      if (a.fecha_inicio && fin >= a.fecha_inicio) avance = (days(a.fecha_inicio, fin) + 1 - hor.filter(h => NOCOBRA.includes(h.estado) && h.fecha <= fin).length) / k;
       const ini = corte ? addDays(corte, 1) : a.fecha_inicio;
-      pend = ini && fin >= ini ? (days(ini, fin) + 1) / k : 0;
+      pend = ini && fin >= ini ? (days(ini, fin) + 1 - hor.filter(h => NOCOBRA.includes(h.estado) && h.fecha >= ini && h.fecha <= fin).length) / k : 0;
     }
   }
   const horasReg = hor.reduce((t, h) => { const d = (+h.h_fin || 0) - (+h.h_ini || 0); return t + (h.h_fin != null && h.h_ini != null && d > 0 ? d : 0); }, 0);
@@ -249,7 +268,7 @@ function calc(a) {
   const desmovCobrada = edps.some(e => (+e.monto_desmov || 0) > 0);
   const movCobrada = edps.some(e => (+e.monto_mov || 0) > 0);
   const diasFin = a.fecha_fin ? days(hoy, a.fecha_fin) : null;
-  return {horasReg, edpAbierto, hor, edps, pers, base, avance, enEdp, pend, enviado, vendidoOC, vendidoPal, movTot, desmovCobrada, movCobrada, diasFin, ultimo, ultimoFin, monto};
+  return {baseEf, diasFalla, cortes, arrastre, horasReg, edpAbierto, hor, edps, pers, base, avance, enEdp, pend, enviado, vendidoOC, vendidoPal, movTot, desmovCobrada, movCobrada, diasFin, ultimo, ultimoFin, monto};
 }
 
 /* ---------------- Alertas ---------------- */
@@ -260,8 +279,8 @@ function alertas() {
     const c = calc(a), nom = esc(a.descripcion), m = esc(mandante(a).nombre || ''), link = `<a href="#a-${a.id}">Abrir</a>`;
     const activo = a.estado === 'palabra' || a.estado === 'con_oc';
     if (activo && a.modalidad === 'hora') {
-      if (c.pend >= c.base) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): cumplió ${nf(c.pend)} de ${nf(c.base)} h. ${c.edpAbierto ? `<b>Cerrar EDP N° ${c.edpAbierto.n}</b>` : '<b>Confeccionar EDP</b>'} y confirmar con el mandante si prorroga o termina. ${link}`});
-      else if (c.pend >= c.base * uH) L.push({lv: 'amber', ic: '🟡', t: `<b>${nom}</b> (${m}): va en ${nf(c.pend)} de ${nf(c.base)} h. <b>Avisar al mandante</b>: ¿prórroga o término? ${link}`});
+      if (c.pend >= c.baseEf) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): cumplió ${nf(c.pend)} de ${nf(c.baseEf)} h${c.diasFalla ? ` (mínimo ajustado por ${c.diasFalla} día(s) de falla)` : ''}. ${c.edpAbierto ? `<b>Cerrar EDP N° ${c.edpAbierto.n}</b>` : '<b>Confeccionar EDP</b>'} y confirmar con el mandante si prorroga o termina. ${link}`});
+      else if (c.pend >= c.baseEf * uH) L.push({lv: 'amber', ic: '🟡', t: `<b>${nom}</b> (${m}): va en ${nf(c.pend)} de ${nf(c.baseEf)} h. <b>Avisar al mandante</b>: ¿prórroga o término? ${link}`});
       if (c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último horómetro registrado el ${fd(c.ultimo)}. ${link}`});
     }
     if (activo && a.modalidad !== 'hora' && a.conteo_dias === 'reportados' && c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último reporte diario registrado el ${fd(c.ultimo)}. ${link}`});
@@ -278,7 +297,10 @@ function alertas() {
       if (e.estado === 'borrador') L.push({lv: 'blue', ic: '✉️', t: `<b>${nom}</b>: EDP N° ${e.n} (${clp(c.monto(e))}) <b>por enviar</b> al mandante. ${link}`});
       else if (a.requiere_hes && e.hes_estado !== 'recibida' && e.hes_estado !== 'no_aplica') {
         const d = e.fecha_envio ? days(e.fecha_envio, hoy) : null;
-        L.push({lv: d != null && d >= dHes ? 'red' : 'orange', ic: '🧾', t: `<b>${nom}</b>: EDP N° ${e.n} enviado${e.fecha_envio ? ' el ' + fd(e.fecha_envio) : ''}, <b>HES ${e.hes_estado === 'solicitada' ? 'solicitada, sin recibir' : 'por solicitar'}</b>. ${link}`});
+        const ocT = e.oc ? ` (OC/SolPed N° <b>${esc(e.oc)}</b>)` : '', env = e.fecha_envio ? ' el ' + fd(e.fecha_envio) : '';
+        if (d != null && d >= dHes) L.push({lv: 'red', ic: '🧾', t: `<b>${nom}</b>: EDP N° ${e.n} enviado${env}, lleva <b>${d} días sin HES</b>. <b>Pedir la HES directamente al emisor</b>${ocT}. ${link}`});
+        else if (e.hes_estado === 'solicitada') L.push({lv: 'orange', ic: '🧾', t: `<b>${nom}</b>: EDP N° ${e.n} <b>aprobado</b>${e.aprobacion ? ' (' + esc(e.aprobacion) + ')' : ''}, HES en emisión. ${link}`});
+        else L.push({lv: 'orange', ic: '🧾', t: `<b>${nom}</b>: EDP N° ${e.n} enviado${env}, <b>esperando aprobación</b> (correo "favor emitir HES")${d != null ? ` · ${d} día(s)` : ''}. ${link}`});
       } else if (!a.requiere_hes && !e.aprobacion) L.push({lv: 'orange', ic: '✅', t: `<b>${nom}</b>: EDP N° ${e.n} enviado, falta registrar la <b>aprobación del cliente</b>. ${link}`});
       else if (!e.entregado_finanzas) L.push({lv: 'green', ic: '💼', t: `<b>${nom}</b>: EDP N° ${e.n} listo (${a.requiere_hes ? 'HES ' + esc(e.hes_numero || '') : 'aprobado'}). <b>Entregar a Finanzas</b>. ${link}`});
     });
@@ -392,6 +414,7 @@ function formArriendo(a) {
     <div><label>Estado</label><select id="fEs">${[['cotizado', 'Cotizado'], ['palabra', 'Adjudicado de palabra (sin OC)'], ['con_oc', 'Con OC / SolPed'], ['terminado', 'Terminado'], ['cerrado', 'Cerrado']].map(([k, l]) => `<option value="${k}" ${a.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
     ${nuevo ? `<div><label>N° OC / SolPed (si ya llegó)</label><input id="fOc"></div>` : ''}
     <div><label>Conteo de días (solo cobro por día o mes)</label><select id="fCd"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte</option></select></div>
+    <div><label>Días con falla del equipo o en taller</label><select id="fDf"><option value="0" ${!a.descuenta_fallas ? 'selected' : ''}>Se cobra igual el mínimo (180 h / 30 días)</option><option value="1" ${a.descuenta_fallas ? 'selected' : ''}>Se descuentan proporcional</option></select></div>
     <div><label>¿Requiere HES?</label><select id="fHe"><option value="1" ${a.requiere_hes ? 'selected' : ''}>Sí (minera / empresa)</option><option value="0" ${!a.requiere_hes ? 'selected' : ''}>No (particular: aprobación)</option></select></div>
   </div>
   <div style="margin-top:10px"><label>Notas</label><textarea id="fNo">${esc(a.notas || '')}</textarea></div>
@@ -427,6 +450,7 @@ function formArriendo(a) {
       tarifa: num(val('fTa')), base_cobro: num(val('fBa')), movilizacion: num(val('fMv')) || 0, desmovilizacion: num(val('fDm')) || 0, operador: val('fOp') || null,
       fecha_inicio: val('fFi') || null, fecha_fin: val('fFf') || null, estado: val('fEs'), requiere_hes: val('fHe') === '1', notas: val('fNo') || null};
     if (D.hasConteo) o.conteo_dias = val('fCd');
+    if (D.hasFallas) o.descuenta_fallas = val('fDf') === '1';
     guardar(async () => {
       if (nuevo) {
         const r = await ins('arriendos', o);
@@ -479,33 +503,37 @@ function vArriendo(id) {
   } else if (tabA === 'horo') {
     if (a.modalidad === 'global') { T.innerHTML = '<div class="card">Este servicio es a suma global: no lleva horómetro ni conteo de días.</div>'; return; }
     const esHora = a.modalidad === 'hora', last = c.hor[c.hor.length - 1], lastH = c.hor.slice().reverse().find(h => h.h_fin != null);
+    const noCob = c.hor.filter(h => ['falla_terracop', 'taller'].includes(h.estado)).length;
     T.innerHTML = `${esHora ? '' : `<div class="card"><div class="row"><h2 style="margin:0">¿Cómo se cuentan los días?</h2><span class="sp"></span>
         <select id="hCnt" style="width:auto"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos (calendario, desde el inicio)</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte (solo los días registrados abajo)</option></select></div>
-        <div class="small muted" style="margin-top:6px">${a.conteo_dias === 'reportados' ? `Se cobran los días registrados abajo: van <b>${c.hor.length}</b>.` : `Se cuentan solos desde el ${fd(a.fecha_inicio)}: van <b>${verU(a, c.avance)}</b> días. Los reportes de abajo son solo de respaldo (opcional).`}${c.horasReg ? ` · Horas registradas en horómetro: <b>${nf(c.horasReg, 1)} h</b>.` : ''}</div></div>`}
+        <div class="small muted" style="margin-top:6px">${a.conteo_dias === 'reportados' ? `Se cobran los días registrados abajo.` : `Se cuentan solos desde el ${fd(a.fecha_inicio)}.`} Días cobrables: <b>${verU(a, c.avance)}</b>${noCob && a.descuenta_fallas ? ` (se descuentan ${noCob} día(s) de falla Terracop o taller)` : ''}.${c.horasReg ? ` Horas registradas en horómetro: <b>${nf(c.horasReg, 1)} h</b>.` : ''}</div></div>`}
+      <div class="card row" style="gap:10px"><b class="small">Días con falla del equipo o en taller:</b><select id="hDf" style="width:auto"><option value="0" ${!a.descuenta_fallas ? 'selected' : ''}>Se cobra igual el mínimo (${esHora ? nf(c.base) + ' h' : '30 días'})</option><option value="1" ${a.descuenta_fallas ? 'selected' : ''}>Se descuentan proporcional</option></select>
+        <span class="small muted">${a.descuenta_fallas ? (esHora ? `Mínimo del período en curso: <b>${nf(c.baseEf, 1)} h</b>${c.diasFalla ? ` (−${nf(c.base / 30 * c.diasFalla, 1)} h por ${c.diasFalla} día(s) de falla)` : ''}.` : 'Esos días no se cuentan.') : 'Como con los mandantes grandes: los días con falla quedan registrados pero no cambian el cobro.'}</span></div>
+      ${esHora ? `<div class="card"><div class="row" style="gap:18px"><div><div class="small muted">Horas pendientes de cobro</div><div class="big">${nf(c.pend, 1)} h <span class="small muted">de ${nf(c.baseEf, 1)}</span></div></div>
+        ${c.arrastre ? `<div><div class="small muted">Arrastradas del último EDP</div><div class="big" style="color:var(--orange)">${nf(c.arrastre, 1)} h</div></div>` : ''}
+        <div><div class="small muted">Total registrado</div><div class="big">${nf(c.avance, 1)} h</div></div><span class="sp"></span><button id="hExp">⬇️ Exportar a Excel</button></div></div>` : `<div class="row" style="margin-bottom:10px"><span class="sp"></span><button id="hExp">⬇️ Exportar a Excel</button></div>`}
       <div class="card"><h2>${esHora ? 'Registrar horómetro' : 'Registrar reporte diario'}</h2>
       <div class="f"><div><label>Fecha</label><input type="date" id="hF" value="${todayISO()}"></div>
       <div><label>N° report</label><input id="hR" value="${last && /^\d+$/.test(last.n_report || '') ? (+last.n_report + 1) : ''}"></div>
       <div><label>Horómetro inicial${esHora ? '' : ' (opcional)'}</label><input id="hI" inputmode="decimal" value="${lastH ? lastH.h_fin : ''}"></div>
       <div><label>Horómetro final${esHora ? '' : ' (opcional)'}</label><input id="hX" inputmode="decimal"></div>
-      <div><label>Observación</label><input id="hO" placeholder="Lluvia, mantención, sin operación…"></div></div>
-      ${esHora ? '' : '<div class="small muted" style="margin-top:6px">Equipos sin horómetro (como el martillo): deje los horómetros vacíos y registre solo la fecha.</div>'}
+      <div><label>Estado del día</label><select id="hE">${estadoOpts('operativo')}</select></div>
+      <div><label>Observación</label><input id="hO" placeholder="Ej. 5 h pendientes, lluvia, cambio de aceite…"></div></div>
+      <div class="small muted" style="margin-top:6px">Escriba el horómetro inicial y final <b>tal como viene en el report</b>, aunque el inicial no calce con el final del día anterior: la app marca el salto, pero guarda lo que le enviaron. Si no trabajó, ponga el mismo valor en inicial y final y elija el estado del día.${esHora ? '' : ' Equipos sin horómetro (como el martillo): deje los horómetros vacíos.'}</div>
       <div class="row" style="margin-top:10px"><span id="hMsg" class="small"></span><span class="sp"></span><button class="pri" id="hOk">Guardar</button></div></div>
-      <div class="card tw"><table><thead><tr><th>Fecha</th><th>N° report</th><th class="n">Inicial</th><th class="n">Final</th><th class="n">Horas</th><th>Observación</th><th></th></tr></thead><tbody>
-      ${c.hor.slice().reverse().map(h => `<tr><td>${fd(h.fecha)}</td><td>${esc(h.n_report || '')}</td><td class="n">${h.h_ini != null ? nf(h.h_ini, 1) : '—'}</td><td class="n">${h.h_fin != null ? nf(h.h_fin, 1) : '—'}</td><td class="n"><b>${h.h_ini != null && h.h_fin != null ? nf(h.h_fin - h.h_ini, 1) : '—'}</b></td><td class="small">${esc(h.obs || '')}</td><td><button class="sm dan" data-dh="${h.id}">✕</button></td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin registros.</td></tr>'}
-      </tbody></table></div>`;
-    const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h`) : (lastH && i != null && i !== +lastH.h_fin ? `⚠ El inicial no coincide con el último final (${nf(lastH.h_fin, 1)}).` : ''); };
+      <div class="card tw"><table><thead><tr><th>Fecha</th><th>N° report</th><th class="n">Inicial</th><th class="n">Final</th><th class="n">Horas</th><th class="n">Acum.</th><th>Estado</th><th>Observación</th><th></th></tr></thead><tbody>${filasHoro(a, c)}</tbody></table></div>`;
+    const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h${lastH && i !== +lastH.h_fin ? ` · ⚠ salto de ${nf(i - lastH.h_fin, 1)} h respecto del último final (${nf(lastH.h_fin, 1)}): se guarda igual` : ''}`) : (lastH && i != null && i !== +lastH.h_fin ? `⚠ El inicial no calza con el último final (${nf(lastH.h_fin, 1)}). Se guardará tal cual.` : ''); };
     $('hI').oninput = chk; $('hX').oninput = chk;
     if ($('hCnt')) $('hCnt').onchange = () => { if (!D.hasConteo) return alert('Para usar esta opción ejecute primero sql/05_conteo_dias.sql en Supabase.'); guardar(() => upd('arriendos', a.id, {conteo_dias: val('hCnt')}), 'Conteo de días actualizado'); };
+    $('hExp').onclick = () => exportHoro(a, c);
+    $('hDf').onchange = () => { if (!D.hasFallas) return alert('Para usar esta opción ejecute primero sql/07_estado_dia.sql en Supabase.'); guardar(() => upd('arriendos', a.id, {descuenta_fallas: val('hDf') === '1'}), 'Criterio actualizado'); };
     $('hOk').onclick = () => {
-      const o = {arriendo_id: a.id, fecha: val('hF'), n_report: val('hR') || null, h_ini: num(val('hI')), h_fin: num(val('hX')), obs: val('hO') || null};
-      if (!o.fecha) return alert('Escriba la fecha.');
-      if (esHora && (o.h_ini == null || o.h_fin == null)) return alert('Complete horómetro inicial y final (si no trabajó, ponga el mismo valor).');
-      if ((o.h_ini == null) !== (o.h_fin == null)) return alert('Complete los dos horómetros (inicial y final) o deje ambos vacíos.');
-      if (o.h_fin != null && o.h_fin < o.h_ini) return alert('El horómetro final no puede ser menor que el inicial.');
-      if (c.hor.some(h => h.fecha === o.fecha)) return alert('Ya hay un registro para esa fecha. Bórrelo primero si quiere corregirlo.');
+      const o = leerHoro(a, esHora, 'h'); if (!o) return;
+      if (c.hor.some(h => h.fecha === o.fecha)) return alert('Ya hay un registro para esa fecha. Use ✎ para corregirlo.');
       guardar(() => ins('horometros', o), esHora ? 'Horómetro guardado' : 'Reporte guardado');
     };
     T.querySelectorAll('[data-dh]').forEach(b => b.onclick = () => { if (confirm('¿Borrar este registro?')) guardar(() => del('horometros', b.dataset.dh), 'Registro borrado'); });
+    T.querySelectorAll('[data-eh]').forEach(b => b.onclick = () => editHoro(a, byId('horometros', b.dataset.eh)));
   } else if (tabA === 'per') {
     T.innerHTML = `<div class="card tw"><table><thead><tr><th>N°</th><th>Tipo</th><th class="n">Cantidad</th><th class="n">Tarifa</th><th class="n">Monto</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>OC</th><th></th></tr></thead><tbody>
       ${c.pers.map(p => `<tr><td>${p.n}</td><td>${p.tipo === 'inicial' ? 'Inicial' : 'Prórroga'}</td><td class="n">${nf(p.cantidad, 1)}</td><td class="n">${clp(p.tarifa)}</td><td class="n">${clp((+p.cantidad || 0) * (+p.tarifa || 0))}</td><td>${fd(p.desde)}</td><td>${fd(p.hasta)}</td><td>${p.estado === 'con_oc' ? '<span class="chip c-blue">Con OC</span>' : '<span class="chip c-orange">Sin OC</span>'}</td><td>${esc(p.oc || '')}</td><td><button class="sm" data-ep="${p.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="10" class="muted">Sin períodos.</td></tr>'}
@@ -516,11 +544,146 @@ function vArriendo(id) {
       ${c.edps.map(e => `<tr><td>${e.n}</td><td class="small">${fd(e.desde)} – ${fd(e.hasta)}</td><td class="n">${nf(e.cantidad, 1)}</td><td class="n">${clp(c.monto(e))}${+e.monto_mov ? '<div class="small muted">incl. mov.</div>' : ''}${+e.monto_desmov ? '<div class="small muted">incl. desmov.</div>' : ''}</td>
       <td>${({borrador: '<span class="chip">Por enviar</span>', enviado: '<span class="chip c-blue">Enviado</span>', aprobado: '<span class="chip c-green">Aprobado</span>', observado: '<span class="chip c-red">Observado</span>'})[e.estado] || esc(e.estado)}</td>
       <td>${fd(e.fecha_envio)}</td>
-      <td>${a.requiere_hes ? (e.hes_estado === 'recibida' ? '<span class="chip c-green">N° ' + esc(e.hes_numero || '') + '</span>' : e.hes_estado === 'solicitada' ? '<span class="chip c-orange">Solicitada</span>' : e.hes_estado === 'no_aplica' ? '—' : '<span class="chip">Por solicitar</span>') : esc(e.aprobacion || '—')}</td>
+      <td>${a.requiere_hes ? (e.hes_estado === 'recibida' ? '<span class="chip c-green">N° ' + esc(e.hes_numero || '') + '</span>' : e.hes_estado === 'solicitada' ? '<span class="chip c-orange">Aprobado · HES en emisión</span>' : e.hes_estado === 'no_aplica' ? '—' : e.estado === 'borrador' ? '<span class="chip">—</span>' : '<span class="chip c-amber">Esperando aprobación</span>') : esc(e.aprobacion || '—')}</td>
       <td>${e.entregado_finanzas ? '✔ ' + fd(e.entregado_finanzas) : ''}</td><td><button class="sm" data-ee="${e.id}">Abrir</button></td></tr>`).join('') || '<tr><td colspan="9" class="muted">Sin EDP.</td></tr>'}
       </tbody></table></div>`;
     T.querySelectorAll('[data-ee]').forEach(b => b.onclick = () => formEdp(a, byId('edps', b.dataset.ee)));
   }
+}
+
+/* ---------- Horómetros: estados, filas, edición y exportación ---------- */
+const ESTADOS = [['operativo', '✅ Operativo'], ['sin_operacion', '🌧️ Sin operación (clima / contingencia / mandante)'], ['mantencion', '🔧 Mantención programada'], ['falla_terracop', '⚠️ Falla del equipo (Terracop)'], ['falla_mandante', '🧾 Falla por causa del mandante'], ['taller', '🏭 En taller / bajado de faena']];
+const estadoOpts = v => ESTADOS.map(([k, l]) => `<option value="${k}" ${v === k ? 'selected' : ''}>${l}</option>`).join('');
+const estadoTxt = v => ({operativo: '', sin_operacion: 'Sin operación', mantencion: 'Mantención', falla_terracop: 'Falla equipo', falla_mandante: 'Falla mandante', taller: 'En taller'}[v || 'operativo'] || '');
+const estadoChip = v => !v || v === 'operativo' ? '' : `<span class="chip ${['falla_terracop', 'taller'].includes(v) ? 'c-red' : v === 'falla_mandante' ? 'c-orange' : 'c-amber'}">${estadoTxt(v)}</span>`;
+function filasHoro(a, c) {
+  const L = [], edps = c.edps.filter(e => e.hasta).sort((x, y) => x.hasta.localeCompare(y.hasta));
+  let acum = 0, prev = null, k = 0;
+  const sep = e => { const ct = c.cortes.find(x => x.edp.id === e.id);
+    return `<tr><td colspan="9" style="background:var(--pale);font-size:12px;color:var(--navy2)"><b>✂ Corte EDP N° ${e.n}</b> al ${fd(e.hasta)}${e.fecha_envio ? ' · enviado el ' + fd(e.fecha_envio) : ' · por enviar'} · cobrado ${nf(e.cantidad, 1)} ${unidadMod(a.modalidad)}${ct ? ` · trabajado ${nf(ct.trab + ct.previo, 1)} h${ct.arrastre ? ` · <b style="color:var(--orange)">${nf(ct.arrastre, 1)} h pasan al período siguiente</b>` : ''}` : ''}</td></tr>`; };
+  c.hor.forEach(h => {
+    while (k < edps.length && h.fecha > edps[k].hasta) { L.push(sep(edps[k])); acum = 0; k++; }
+    const hh = h.h_ini != null && h.h_fin != null ? h.h_fin - h.h_ini : null; if (hh > 0) acum += hh;
+    const salto = prev && prev.h_fin != null && h.h_ini != null && +h.h_ini !== +prev.h_fin ? +h.h_ini - +prev.h_fin : 0;
+    const saltoR = prev && /^\d+$/.test(prev.n_report || '') && /^\d+$/.test(h.n_report || '') && +h.n_report !== +prev.n_report + 1;
+    L.push(`<tr><td>${fd(h.fecha)}</td><td>${esc(h.n_report || '')}${saltoR ? ' <span title="El N° de report no sigue el correlativo" style="cursor:help">⚠</span>' : ''}</td>
+      <td class="n">${h.h_ini != null ? nf(h.h_ini, 1) : '—'}${salto ? `<div class="small" style="color:var(--orange)" title="El inicial no calza con el final del día anterior">salto ${salto > 0 ? '+' : ''}${nf(salto, 1)}</div>` : ''}</td>
+      <td class="n">${h.h_fin != null ? nf(h.h_fin, 1) : '—'}</td><td class="n"><b>${hh != null ? nf(hh, 1) : '—'}</b></td><td class="n small">${a.modalidad === 'hora' ? nf(acum, 1) : ''}</td>
+      <td>${estadoChip(h.estado)}</td><td class="small">${esc(h.obs || '')}</td><td style="white-space:nowrap"><button class="sm" data-eh="${h.id}" title="Corregir">✎</button><button class="sm dan" data-dh="${h.id}" title="Borrar">✕</button></td></tr>`);
+    prev = h;
+  });
+  while (k < edps.length && edps[k].hasta < todayISO()) { L.push(sep(edps[k])); k++; }
+  return L.reverse().join('') || '<tr><td colspan="9" class="muted">Sin registros.</td></tr>';
+}
+function leerHoro(a, esHora, pre) {
+  const g = id => val(pre + id);
+  const o = {arriendo_id: a.id, fecha: g('F'), n_report: g('R') || null, h_ini: num(g('I')), h_fin: num(g('X')), obs: g('O') || null};
+  if (D.horometros.length && 'estado' in D.horometros[0] || D.hasEstado) o.estado = g('E') || 'operativo';
+  if (!o.fecha) { alert('Escriba la fecha.'); return null; }
+  if (esHora && (o.h_ini == null || o.h_fin == null)) { alert('Complete horómetro inicial y final (si no trabajó, ponga el mismo valor).'); return null; }
+  if ((o.h_ini == null) !== (o.h_fin == null)) { alert('Complete los dos horómetros (inicial y final) o deje ambos vacíos.'); return null; }
+  if (o.h_fin != null && o.h_fin < o.h_ini) { alert('El horómetro final no puede ser menor que el inicial.'); return null; }
+  return o;
+}
+function editHoro(a, h) {
+  const esHora = a.modalidad === 'hora';
+  modal(`<h3>Corregir registro del ${fd(h.fecha)}</h3><div class="f">
+    <div><label>Fecha</label><input type="date" id="ehF" value="${h.fecha}"></div>
+    <div><label>N° report</label><input id="ehR" value="${esc(h.n_report || '')}"></div>
+    <div><label>Horómetro inicial</label><input id="ehI" inputmode="decimal" value="${h.h_ini ?? ''}"></div>
+    <div><label>Horómetro final</label><input id="ehX" inputmode="decimal" value="${h.h_fin ?? ''}"></div>
+    <div><label>Estado del día</label><select id="ehE">${estadoOpts(h.estado || 'operativo')}</select></div>
+    <div><label>Observación</label><input id="ehO" value="${esc(h.obs || '')}"></div></div>
+    <div class="mf"><button id="ehCan">Cancelar</button><button class="pri" id="ehOk">Guardar</button></div>`);
+  $('ehCan').onclick = closeModal;
+  $('ehOk').onclick = () => { const o = leerHoro(a, esHora, 'eh'); if (!o) return;
+    if (o.fecha !== h.fecha && D.horometros.some(x => x.arriendo_id === a.id && x.fecha === o.fecha)) return alert('Ya hay otro registro con esa fecha.');
+    delete o.arriendo_id; guardar(() => upd('horometros', h.id, o), 'Registro corregido'); };
+}
+function exportHoro(a, c) {
+  const edps = c.edps.filter(e => e.desde || e.hasta);
+  const ult = c.cortes.length ? c.cortes[c.cortes.length - 1].edp.hasta : null;
+  modal(`<h3>Exportar registro diario a Excel</h3>
+    <div class="f"><div><label>¿Qué período?</label><select id="xR">
+      ${edps.map(e => `<option value="e:${e.id}">EDP N° ${e.n} (${fd(e.desde) || 'inicio'} al ${fd(e.hasta) || 'hoy'})</option>`).join('')}
+      <option value="cur" selected>Período en curso (${ult ? 'desde ' + fd(addDays(ult, 1)) : 'desde el inicio'})</option><option value="all">Todo el arriendo</option><option value="f">Elegir fechas…</option></select></div>
+    <div id="xFw" hidden><label>Desde</label><input type="date" id="xD"></div><div id="xHw" hidden><label>Hasta</label><input type="date" id="xH"></div></div>
+    <p class="small muted">Genera la hoja <b>"REGISTRO DIARIO DE HORAS MÁQUINA"</b> con fecha, N° report, horómetros, horas diarias, acumuladas y observaciones, igual que el respaldo de su EDP.</p>
+    <div class="mf"><button id="xCan">Cancelar</button><button class="pri" id="xOk">⬇️ Descargar Excel</button></div>`);
+  $('xR').onchange = () => { const f = val('xR') === 'f'; $('xFw').hidden = $('xHw').hidden = !f; };
+  $('xCan').onclick = closeModal;
+  $('xOk').onclick = () => {
+    let d = null, h = null, r = val('xR'), etq = 'periodo en curso';
+    if (r.startsWith('e:')) { const e = byId('edps', r.slice(2)); d = e.desde; h = e.hasta; etq = 'EDP ' + e.n; }
+    else if (r === 'cur') d = ult ? addDays(ult, 1) : null;
+    else if (r === 'f') { d = val('xD') || null; h = val('xH') || null; etq = (d || '') + '_' + (h || ''); }
+    else etq = 'completo';
+    const rows = c.hor.filter(x => (!d || x.fecha >= d) && (!h || x.fecha <= h));
+    if (!rows.length) return alert('No hay registros en ese período.');
+    const m = mandante(a), fl = byId('flota', a.flota_id), per = c.pers.slice().reverse().find(p => !p.desde || p.desde <= rows[0].fecha) || {};
+    const S = (v, st) => ({t: 's', v: String(v ?? ''), s: st}), N = (v, st) => v == null || v === '' ? S('', st) : {t: 'n', v: +v, s: st}, F = (v, st) => ({t: 'd', v, s: st});
+    const out = [[], [null, S('REGISTRO DIARIO DE HORAS MÁQUINA ' + (a.descripcion || '').toUpperCase(), 1)],
+      [null, S(`${m.nombre || ''}${fl ? ' · ' + (fl.patente || fl.codigo) : ''}${per.oc ? ' · OC ' + per.oc : ''} · Período ${fd(rows[0].fecha)} al ${fd(rows[rows.length - 1].fecha)}`, 9)],
+      [null, ...['FECHA', 'N° REPORT', 'HORÓMETRO INICIAL', 'HORÓMETRO FINAL', 'TOTAL HORAS DIARIAS', 'HORAS ACUMULADAS', 'OBSERVACIONES'].map(t => S(t, 2))]];
+    let acum = 0;
+    rows.forEach(x => { const hh = x.h_ini != null && x.h_fin != null ? x.h_fin - x.h_ini : null; if (hh > 0) acum += hh;
+      const ob = [estadoTxt(x.estado), x.obs].filter(Boolean).join(' · ');
+      out.push([null, F(x.fecha, 3), N(/^\d+$/.test(x.n_report || '') ? +x.n_report : null, 4), N(x.h_ini, 5), N(x.h_fin, 5), N(hh, 5), N(a.modalidad === 'hora' || hh != null ? acum : null, 5), S(ob, 6)]);
+      if (!/^\d+$/.test(x.n_report || '') && x.n_report) out[out.length - 1][2] = S(x.n_report, 4); });
+    out.push([null, S('TOTAL HORAS ACUMULADAS:', 7), S('', 7), S('', 7), S('', 7), N(acum, 8), S('', 7), S(a.modalidad !== 'hora' ? `${rows.filter(x => !a.descuenta_fallas || !['falla_terracop', 'taller'].includes(x.estado)).length} día(s) cobrables` : '', 7)]);
+    const blob = xlsxBlob('Respaldos', out, [3, 13, 12, 14, 14, 14, 14, 40], ['B2:H2', 'B3:H3']);
+    const nm = `Respaldo horometro ${(fl && (fl.patente || fl.codigo)) || a.descripcion.slice(0, 20)} ${etq}.xlsx`.replace(/[\\/:*?"<>|]/g, '-');
+    const l = document.createElement('a'); l.href = URL.createObjectURL(blob); l.download = nm; l.click(); setTimeout(() => URL.revokeObjectURL(l.href), 3000);
+    closeModal(); toast('Excel descargado');
+  };
+}
+/* ---------- Generador mínimo de .xlsx (sin librerías) ---------- */
+function xlsxBlob(sheetName, rows, widths, merges) {
+  const X = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const col = i => { let s = ''; i++; while (i) { const m = (i - 1) % 26; s = String.fromCharCode(65 + m) + s; i = Math.floor((i - 1) / 26); } return s; };
+  const serial = iso => dUTC(iso) / 86400000 + 25569;
+  const sd = rows.map((r, ri) => `<row r="${ri + 1}">${(r || []).map((c, ci) => { if (!c) return ''; const ref = col(ci) + (ri + 1), st = c.s ? ` s="${c.s}"` : '';
+    if (c.t === 'n') return `<c r="${ref}"${st}><v>${c.v}</v></c>`; if (c.t === 'd') return `<c r="${ref}"${st}><v>${serial(c.v)}</v></c>`;
+    return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${X(c.v)}</t></is></c>`; }).join('')}</row>`).join('');
+  const files = {
+    '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+    '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+    'xl/workbook.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="${X(sheetName)}" sheetId="1" r:id="rId1"/></sheets></workbook>`,
+    'xl/_rels/workbook.xml.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+    'xl/styles.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0.0"/><numFmt numFmtId="165" formatCode="dd-mm-yyyy"/></numFmts>'
+      + '<fonts count="4"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="14"/><color rgb="FF1F3864"/><name val="Calibri"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Calibri"/></font></fonts>'
+      + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF1F3864"/><bgColor indexed="64"/></patternFill></fill></fills>'
+      + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FF9FB3C8"/></left><right style="thin"><color rgb="FF9FB3C8"/></right><top style="thin"><color rgb="FF9FB3C8"/></top><bottom style="thin"><color rgb="FF9FB3C8"/></bottom><diagonal/></border></borders>'
+      + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="10">'
+      + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+      + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+      + '<xf numFmtId="0" fontId="3" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
+      + '<xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      + '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      + '<xf numFmtId="164" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      + '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment wrapText="1"/></xf>'
+      + '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1"/>'
+      + '<xf numFmtId="164" fontId="1" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
+      + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs></styleSheet>',
+    'xl/worksheets/sheet1.xml': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><cols>${widths.map((w, i) => `<col min="${i + 1}" max="${i + 1}" width="${w}" customWidth="1"/>`).join('')}</cols><sheetData>${sd}</sheetData>${merges && merges.length ? `<mergeCells count="${merges.length}">${merges.map(m => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : ''}<pageSetup orientation="portrait" fitToWidth="1"/></worksheet>`
+  };
+  return zipStore(files, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+}
+function zipStore(files, type) {
+  const enc = new TextEncoder(), T = zipStore.T || (zipStore.T = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })());
+  const crc = b => { let c = 0xFFFFFFFF; for (let i = 0; i < b.length; i++) c = T[(c ^ b[i]) & 0xFF] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+  const parts = [], cen = []; let off = 0;
+  const u16 = v => [v & 255, (v >>> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+  Object.entries(files).forEach(([name, txt]) => {
+    const nb = enc.encode(name), db = enc.encode(txt), cr = crc(db);
+    const lh = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(cr), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0)]);
+    parts.push(lh, nb, db);
+    cen.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(cr), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), nb);
+    off += lh.length + nb.length + db.length;
+  });
+  const cs = cen.reduce((t, b) => t + b.length, 0), n = Object.keys(files).length;
+  const end = new Uint8Array([...u32(0x06054b50), ...u16(0), ...u16(0), ...u16(n), ...u16(n), ...u32(cs), ...u32(off), ...u16(0)]);
+  return new Blob([...parts, ...cen, end], {type});
 }
 
 function formPeriodo(a, p) {
@@ -605,7 +768,8 @@ function formEdp(a, e, final) {
       <div><label>N° OC</label><input id="eOc" value="${esc(e.oc || '')}"></div>
       <div><label>Estado</label><select id="eE">${[['borrador', 'Por enviar'], ['enviado', 'Enviado'], ['aprobado', 'Aprobado'], ['observado', 'Observado']].map(([k, l]) => `<option value="${k}" ${e.estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div><label>Fecha de envío</label><input type="date" id="eF" value="${e.fecha_envio || ''}"></div>
-      ${a.requiere_hes ? `<div><label>Estado HES</label><select id="eHs">${[['por_solicitar', 'Por solicitar'], ['solicitada', 'Solicitada'], ['recibida', 'Recibida'], ['no_aplica', 'No aplica']].map(([k, l]) => `<option value="${k}" ${e.hes_estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      ${a.requiere_hes ? `<div><label>Estado HES</label><select id="eHs">${[['por_solicitar', 'Esperando aprobación del EDP'], ['solicitada', 'Aprobado: HES en emisión'], ['recibida', 'HES recibida'], ['no_aplica', 'No aplica']].map(([k, l]) => `<option value="${k}" ${e.hes_estado === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div><label>Aprobación (correo "favor emitir HES")</label><input id="eAp" value="${esc(e.aprobacion || '')}" placeholder="Ej. correo 14-11 de L. Figueroa"></div>
       <div><label>N° HES</label><input id="eHn" value="${esc(e.hes_numero || '')}"></div>
       <div><label>Fecha HES</label><input type="date" id="eHf" value="${e.hes_fecha || ''}"></div>` :
       `<div><label>Aprobación del cliente</label><input id="eAp" value="${esc(e.aprobacion || '')}" placeholder="Ej. correo 12-11 de J. Pérez"></div>`}
@@ -618,6 +782,7 @@ function formEdp(a, e, final) {
     <div class="mf">${!nuevo ? '<button class="dan" id="eDel">Eliminar</button><span class="sp"></span>' : ''}<button id="eCan">Cancelar</button><button class="pri" id="eOk">Guardar</button></div>`);
   const tot = () => { const ma = (num(val('eC')) || 0) * (num(val('eT')) || 0); const t = ma + (num(val('eMv')) || 0) + (num(val('eDm')) || 0) + (num(val('eOt')) || 0); $('eTot').textContent = `Neto ${clp(t)} · IVA ${clp(t * P('iva', 0.19))} · Total ${clp(t * (1 + P('iva', 0.19)))}`; };
   ['eC', 'eT', 'eMv', 'eDm', 'eOt'].forEach(i => $(i).oninput = tot); tot();
+  if ($('eHs') && $('eAp')) $('eAp').oninput = () => { if (val('eAp') && $('eHs').value === 'por_solicitar') $('eHs').value = 'solicitada'; if (val('eAp') && val('eE') === 'enviado') $('eE').value = 'aprobado'; };
   if ($('eHn')) $('eHn').oninput = () => { if (val('eHn')) { $('eHs').value = 'recibida'; if (!val('eHf')) $('eHf').value = todayISO(); } };
   $('eF').onchange = () => { if (val('eF') && val('eE') === 'borrador') $('eE').value = 'enviado'; };
   $('eCan').onclick = () => { closeModal(); go(); };
@@ -626,7 +791,7 @@ function formEdp(a, e, final) {
     const o = {arriendo_id: a.id, periodo_id: e.periodo_id || null, n: num(val('eN')), desde: val('eD') || null, hasta: val('eH') || null, cantidad: num(val('eC')), tarifa: num(val('eT')),
       monto_arriendo: (num(val('eC')) || 0) * (num(val('eT')) || 0), monto_mov: num(val('eMv')) || 0, monto_desmov: num(val('eDm')) || 0, monto_otros: num(val('eOt')) || 0,
       oc: val('eOc') || null, estado: val('eE'), fecha_envio: val('eF') || null, entregado_finanzas: val('eFi') || null, factura: val('eFa') || null, fecha_pago: val('ePg') || null, notas: val('eNo') || null};
-    if (a.requiere_hes) Object.assign(o, {hes_estado: val('eHn') ? 'recibida' : val('eHs'), hes_numero: val('eHn') || null, hes_fecha: val('eHf') || null});
+    if (a.requiere_hes) Object.assign(o, {hes_estado: val('eHn') ? 'recibida' : (val('eAp') && val('eHs') === 'por_solicitar' ? 'solicitada' : val('eHs')), hes_numero: val('eHn') || null, hes_fecha: val('eHf') || null, aprobacion: val('eAp') || null});
     else Object.assign(o, {hes_estado: 'no_aplica', aprobacion: val('eAp') || null});
     if (o.estado !== 'borrador' && !o.oc && !confirm('Este EDP no tiene N° de OC. ¿Guardar igual?')) return;
     if (nuevo && c.edps.some(x => x.n === o.n)) return alert('Ya existe un EDP con ese número.');

@@ -13,6 +13,7 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 3. `sql/03_cotizador.sql`: tablas cotizaciones y ajustes (firma, datos de empresa) + cotizaciones 1265 y 1322.
 4. `sql/04_cotizaciones_historicas.sql`: crea cotizaciones adjudicadas desde los arriendos (1248, 1296, 1307, 1310).
 5. `sql/05_conteo_dias.sql`: columna `arriendos.conteo_dias` (corridos | reportados).
+7. `sql/07_estado_dia.sql`: columna `horometros.estado` (operativo, sin_operacion, mantencion, falla_terracop, falla_mandante, taller).
 6. `sql/06_resumen_gerencial.sql`: función security definer `resumen_gerencial()` que alimenta el panel gerencial en vivo.
 
 ## Funciones de app.html
@@ -44,6 +45,8 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 - Base de horas por EDP: 180 h (mínimo mensual). Prórrogas normalmente de 180 h; Fenix exige cotización por cada extensión.
 - La movilización se cobra en el 1er EDP; las extensiones no la cobran; la desmovilización va en el EDP final.
 - La HES la emite el mandante al aprobar el EDP. Con N° de HES (o aprobación, si es particular), el EDP pasa a Finanzas. La facturación no es del área.
+- Horas trabajadas sobre lo cobrado en un EDP se arrastran al período siguiente; si se trabajó menos (mínimo), no se descuenta. El historial de horómetros muestra los cortes de cada EDP y marca saltos de horómetro o de report (se guarda lo que envía faena). Exporta a Excel el respaldo "REGISTRO DIARIO DE HORAS MÁQUINA".
+- Días con falla del equipo (Terracop) o en taller no se cobran en arriendos por día.
 - Cobro por hora (hm/hh) usa horómetro obligatorio. Cobro por día o mes cuenta días corridos o días con reporte; el horómetro es opcional (el martillo no tiene).
 - Cotizaciones en neto; el EDP agrega IVA 19%.
 - El precio sugerido se calcula como costo × (1 + GG) × (1 + utilidad). Utilidad por defecto: 20%.

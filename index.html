@@ -453,7 +453,7 @@ function render(state) {
     ['', 'Enviado en EDP', clp(env), vend ? Math.round(100 * env / vend) + '% de lo vendido' : '', 'enviado', env],
     ['', 'Por enviar en EDP', clp(por), 'Vendido aún sin estado de pago', 'porenviar', por],
     ['', 'Facturado por cobrar', clp(porCobrar), 'Facturas sin pago (con IVA)', 'cob:Facturado por cobrar', porCobrar],
-    [pend.length ? 'alert' : 'ok', 'HES pendientes', String(pend.length), `${pend.filter(e => e.hes === 'Por solicitar').length} por solicitar · ${pend.filter(e => e.hes === 'Solicitada').length} solicitadas`, 'hespend'],
+    [pend.length ? 'alert' : 'ok', 'HES pendientes', String(pend.length), `${pend.filter(e => e.hes === 'Por solicitar').length} esperando aprobación · ${pend.filter(e => e.hes === 'Solicitada').length} en emisión`, 'hespend'],
     ['ok', 'HES listas', String(listas), 'EDP con N° de HES', 'hes:Recibida'],
     ['', 'Cartera en espera', clp(sum(espera, c => c.monto)), `${espera.length} cotización(es) por adjudicar`, 'cartera', sum(espera, c => c.monto)],
   ];
@@ -463,8 +463,8 @@ function render(state) {
   hbars($('chVentas'), vs.map(v => ({key: 'eq:' + v.id, label: v.serv ? 'Servicios' : `${v.id} · ${String(v.eq).split(' ')[0]}`, values: [v.env, Math.max(0, v.por)]})), [C.navy, C.sky]);
   donut($('chMix'), [{key: 'arriendo', label: 'Arriendo de maquinaria', value: arr, color: C.navy, fmt: mm}, {key: 'servicios', label: 'Servicios', value: serv, color: C.sky, fmt: mm}], mm(vend), 'total vendido');
   const hc = h => edp.filter(e => e.hes === h).length;
-  donut($('chHes'), [{key: 'hes:Recibida', label: 'Recibidas', value: hc('Recibida'), color: C.green}, {key: 'hes:Solicitada', label: 'Solicitadas', value: hc('Solicitada'), color: C.amber},
-    {key: 'hes:Por solicitar', label: 'Por solicitar', value: hc('Por solicitar'), color: C.red}, {key: 'hes:EDP no enviado', label: 'EDP no enviado', value: hc('EDP no enviado'), color: C.grey}], String(edp.length), 'EDP registrados');
+  donut($('chHes'), [{key: 'hes:Recibida', label: 'Recibidas', value: hc('Recibida'), color: C.green}, {key: 'hes:Solicitada', label: 'HES en emisión', value: hc('Solicitada'), color: C.amber},
+    {key: 'hes:Por solicitar', label: 'Esperando aprobación', value: hc('Por solicitar'), color: C.red}, {key: 'hes:EDP no enviado', label: 'EDP no enviado', value: hc('EDP no enviado'), color: C.grey}], String(edp.length), 'EDP registrados');
   const cs = h => sum(edp.filter(e => e.cobro === h), e => e.neto);
   stack($('chCobro'), [{key: 'cob:Pagado', label: 'Pagado', value: cs('Pagado'), color: C.green}, {key: 'cob:Facturado por cobrar', label: 'Facturado por cobrar', value: cs('Facturado por cobrar'), color: C.blue},
     {key: 'cob:Enviado sin factura', label: 'Enviado sin factura', value: cs('Enviado sin factura'), color: C.amber}, {key: 'cob:Por enviar', label: 'Por enviar', value: cs('Por enviar'), color: C.grey}], $('lgCobro'));
@@ -473,7 +473,7 @@ function render(state) {
   $('pend').innerHTML = pend.length ? `<div class="pend">${pend.map(e => {
     const dias = e.envio ? Math.floor((today - e.envio) / 86400000) : null;
     return `<div class="pcard ${e.hes === 'Solicitada' ? 'sol' : ''}" data-d="edp:${e.i}"><div class="t">EDP ${esc(e.n ?? '')} · ${esc(e.pat || e.eq)}</div>
-      <div class="m">${clp(e.neto)} <span class="chip ${hesChip(e.hes)}">${e.hes === 'Solicitada' ? 'HES solicitada' : 'Solicitar HES'}</span></div>
+      <div class="m">${clp(e.neto)} <span class="chip ${hesChip(e.hes)}">${e.hes === 'Solicitada' ? 'Aprobado · HES en emisión' : 'Esperando aprobación'}</span></div>
       <div class="s">${esc(e.det)}</div>
       <div class="s">Enviado: ${e.envio ? fdate(e.envio) + (dias !== null ? (dias === 0 ? ' (hoy)' : ` (hace ${dias} día${dias === 1 ? '' : 's'})`) : '') : '—'}${e.solic ? ' · Solicitar a ' + esc(e.solic) : ''} · OC ${esc(e.oc)}</div></div>`; }).join('')}</div>`
     : '<div class="none">✓ No hay HES pendientes.</div>';
