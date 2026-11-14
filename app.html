@@ -576,7 +576,7 @@ function filasHoro(a, c) {
   const L = [], edps = c.edps.filter(e => e.hasta).sort((x, y) => x.hasta.localeCompare(y.hasta));
   let acum = 0, prev = null, k = 0;
   const sep = e => { const ct = c.cortes.find(x => x.edp.id === e.id);
-    return `<tr><td colspan="9" style="background:var(--pale);font-size:12px;color:var(--navy2)"><b>✂ Corte EDP N° ${e.n}</b> al ${fd(e.hasta)}${e.fecha_envio ? ' · enviado el ' + fd(e.fecha_envio) : ' · por enviar'} · cobrado ${nf(e.cantidad, 1)} ${unidadMod(a.modalidad)}${ct ? ` · trabajado ${nf(ct.trab + ct.previo, 1)} h${ct.arrastre ? ` · <b style="color:var(--orange)">${nf(ct.arrastre, 1)} h pasan al período siguiente</b>` : ''}` : ''}</td></tr>`; };
+    return `<tr><td colspan="9" style="background:var(--pale);font-size:12px;color:var(--navy2)"><b>✂ Corte EDP N° ${e.n}</b> al ${fd(e.hasta)}${e.fecha_envio ? ' · enviado el ' + fd(e.fecha_envio) : e.estado !== 'borrador' ? ' · ' + e.estado : ' · por enviar'} · cobrado ${nf(e.cantidad, 1)} ${unidadMod(a.modalidad)}${ct ? ` · trabajado ${nf(ct.trab + ct.previo, 1)} h${ct.arrastre ? ` · <b style="color:var(--orange)">${nf(ct.arrastre, 1)} h pasan al período siguiente</b>` : ''}` : ''}</td></tr>`; };
   c.hor.forEach(h => {
     while (k < edps.length && h.fecha > edps[k].hasta) { L.push(sep(edps[k])); acum = 0; k++; }
     const hh = h.h_ini != null && h.h_fin != null ? h.h_fin - h.h_ini : null; if (hh > 0) acum += hh;
