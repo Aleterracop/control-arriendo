@@ -105,6 +105,9 @@ label{display:block;font-size:12px;color:var(--muted);font-weight:600;margin-bot
 }
 
 #tIt td input{min-width:54px}#tIt td:nth-child(2) input{min-width:230px}#tIt td:nth-child(3) input{min-width:60px}#tIt td:nth-child(4) input{min-width:70px}#tIt td:nth-child(5) input{min-width:100px}#tIt td:nth-child(7) input{min-width:100px}
+tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#efe6ff 10px,#efe6ff 20px)!important}
+.ac.prueba{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#efe6ff 10px,#efe6ff 20px);border-top-color:#9b6dd6}
+.c-test{background:#ede1ff;color:#6a3fb3}
 /* calculadora */
 #view td.n:not(:has(input)):not(:empty),#view .kpi .v{cursor:pointer}
 #view td.n:not(:has(input)):hover,#view .kpi .v:hover{text-decoration:underline dotted;text-underline-offset:3px}
@@ -227,6 +230,9 @@ const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
 const mandante = a => byId('mandantes', a.mandante_id) || {};
 const unidadMod = m => ({hora: 'h', dia: 'días', mes: 'mes', global: 'gl'}[m] || '');
+const esPruebaCot = c => /prueba/i.test([c.referencia, c.notas, c.cliente, ((D.mandantes || []).find(m => m.id === c.mandante_id) || {}).nombre].join(' '));
+const esPruebaArr = a => /prueba/i.test([a.descripcion, a.notas, ((D.mandantes || []).find(m => m.id === a.mandante_id) || {}).nombre].join(' ')) || (D.cotizaciones || []).some(c => c.arriendo_id === a.id && esPruebaCot(c));
+const chipPrueba = '<span class="chip c-test">🧪 PRUEBA</span>';
 const verU = (a, v, d = 0) => a.modalidad === 'mes' ? nf(v * 30) : nf(v, d);            // los meses se muestran en días
 const uVer = a => a.modalidad === 'mes' ? 'días' : unidadMod(a.modalidad);
 
@@ -294,7 +300,7 @@ function alertas() {
   const L = [], hoy = todayISO();
   const uH = P('umbral_horas', 0.85), uD = P('umbral_dias', 5), dHes = P('dias_hes', 10), dOc = P('dias_sin_oc', 7);
   D.arriendos.forEach(a => {
-    const c = calc(a), nom = esc(a.descripcion), m = esc(mandante(a).nombre || ''), link = `<a href="#a-${a.id}">Abrir</a>`;
+    const c = calc(a), nom = (esPruebaArr(a) ? '🧪 ' : '') + esc(a.descripcion), m = esc(mandante(a).nombre || ''), link = `<a href="#a-${a.id}">Abrir</a>`;
     const activo = a.estado === 'palabra' || a.estado === 'con_oc';
     if (activo && a.modalidad === 'hora') {
       if (c.pend >= c.baseEf) L.push({lv: 'red', ic: '🔴', t: `<b>${nom}</b> (${m}): cumplió ${nf(c.pend)} de ${nf(c.baseEf)} h${c.diasFalla ? ` (mínimo ajustado por ${c.diasFalla} día(s) de falla)` : ''}. ${c.edpAbierto ? `<b>Cerrar EDP N° ${c.edpAbierto.n}</b>` : '<b>Confeccionar EDP</b>'} y confirmar con el mandante si prorroga o termina. ${link}`});
@@ -325,10 +331,14 @@ function alertas() {
     if ((a.estado === 'terminado') && (+a.desmovilizacion || 0) > 0 && !c.desmovCobrada)
       L.push({lv: 'red', ic: '🚚', t: `<b>${nom}</b>: servicio terminado, <b>desmovilización ${clp(a.desmovilizacion)} sin cobrar</b>. Incluirla en el EDP final. ${link}`});
   });
+  // cotizaciones adjudicadas que quedaron sin arriendo
+  (D.cotizaciones || []).filter(c => c.estado === 'adjudicada' && (!c.arriendo_id || !byId('arriendos', c.arriendo_id))).forEach(c => {
+    L.push({lv: 'orange', ic: '⚠️', t: `<b>Cotización ${esc(nCot(c))}</b> figura <b>adjudicada pero sin arriendo</b> (quizás se borró el arriendo). Use "Pasar a arriendo", cámbiela de estado o elimínela si era una prueba. <a href="#c-${c.id}">Abrir</a>`});
+  });
   // cotizaciones enviadas que pasaron su validez
   (D.cotizaciones || []).filter(c => c.estado === 'enviada').forEach(c => {
     const env = c.fecha_envio || c.fecha, venc = env ? addDays(env, +c.validez_dias || 10) : null;
-    if (venc && venc < hoy) L.push({lv: 'amber', ic: '📝', t: `<b>Cotización ${esc(nCot(c))}</b> (${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}): su validez venció hace ${days(venc, hoy)} día(s). ¿Se adjudicó o se perdió? Actualice el estado. <a href="#c-${c.id}">Abrir</a>`});
+    if (venc && venc < hoy) L.push({lv: 'amber', ic: '📝', t: `<b>${esPruebaCot(c) ? '🧪 ' : ''}Cotización ${esc(nCot(c))}</b> (${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}): su validez venció hace ${days(venc, hoy)} día(s). ¿Se adjudicó o se perdió? Actualice el estado. <a href="#c-${c.id}">Abrir</a>`});
   });
   const ord = {red: 0, orange: 1, amber: 2, blue: 3, green: 4};
   return L.sort((x, y) => ord[x.lv] - ord[y.lv]);
@@ -354,7 +364,7 @@ window.addEventListener('hashchange', go);
 function vInicio() {
   const L = alertas();
   let vOC = 0, vPal = 0, env = 0, pendEnv = 0, hesP = 0, enFaena = 0;
-  D.arriendos.forEach(a => {
+  D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => {
     const c = calc(a);
     vOC += c.vendidoOC + (c.pers.some(p => p.estado === 'con_oc') ? c.movTot : 0);
     vPal += c.vendidoPal; env += c.enviado;
@@ -394,8 +404,9 @@ function vArriendos() {
     const c = calc(a), pct = c.base ? Math.max(0, Math.min(100, c.pend / c.base * 100)) : 0;
     const cls = pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : '';
     const fl = byId('flota', a.flota_id);
-    return `<div class="ac" data-id="${a.id}">
-      <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${estChip(a.estado)}</div>
+    const tp = esPruebaArr(a);
+    return `<div class="ac${tp ? ' prueba' : ''}" data-id="${a.id}">
+      <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${tp ? chipPrueba : ''}${estChip(a.estado)}</div>
       <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + (fl.anio ? ' (' + fl.anio + ')' : '') + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
       ${a.modalidad === 'global' ? '' : `<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
       <div class="small">${a.modalidad === 'hora' ? 'Horas' : 'Días'} del período: <b>${verU(a, c.pend)} / ${verU(a, c.base)}</b></div>`}
@@ -466,7 +477,16 @@ function formArriendo(a) {
     const m = byId('mandantes', $('fMa').value); if (m) $('fHe').value = m.requiere_hes ? '1' : '0';
   };
   $('fCan').onclick = closeModal;
-  if (!nuevo) $('fDel').onclick = () => { if (confirm('¿Eliminar este arriendo con sus horómetros, períodos y EDP?')) guardar(() => del('arriendos', a.id).then(() => { location.hash = 'arriendos'; }), 'Arriendo eliminado'); };
+  if (!nuevo) $('fDel').onclick = () => {
+    if (!confirm('¿Eliminar este arriendo con sus horómetros, períodos y EDP?')) return;
+    const cots = (D.cotizaciones || []).filter(c => c.arriendo_id === a.id);
+    let accion = null;
+    if (cots.length) accion = confirm(`Este arriendo está enlazado a la(s) cotización(es) ${cots.map(nCot).join(', ')}.\n\nAceptar = ELIMINAR también la(s) cotización(es) (si era una prueba)\nCancelar = DEJARLA(S) como "Enviada" (si la cotización es real)`) ? 'borrar' : 'enviada';
+    guardar(async () => {
+      for (const c of cots) { if (accion === 'borrar') await del('cotizaciones', c.id); else await upd('cotizaciones', c.id, {estado: 'enviada', arriendo_id: null}); }
+      await del('arriendos', a.id); location.hash = 'arriendos';
+    }, cots.length ? (accion === 'borrar' ? 'Arriendo y cotización eliminados' : 'Arriendo eliminado; la cotización volvió a "Enviada"') : 'Arriendo eliminado');
+  };
   $('fOk').onclick = () => {
     if (!val('fDe')) return alert('Escriba una descripción.');
     const o = {flota_id: val('fFl') || null, descripcion: val('fDe'), mandante_id: val('fMa') || null, cotizacion: val('fCo') || null, modalidad: val('fMo'),
@@ -496,7 +516,8 @@ function vArriendo(id) {
   $('view').innerHTML = `
   <div class="row" style="margin-bottom:10px"><a href="#arriendos">← Arriendos</a></div>
   <div class="card">
-    <div class="row"><h2 style="margin:0">${esc(a.descripcion)}</h2>${estChip(a.estado)}<span class="sp"></span><button class="sm" id="edA">Editar</button></div>
+    ${esPruebaArr(a) ? '<div class="msg small" style="background:#ede1ff;color:#6a3fb3;margin-bottom:8px">🧪 <b>Arriendo de PRUEBA</b>: no cuenta en los totales ni aparece en el panel gerencial.</div>' : ''}
+    <div class="row"><h2 style="margin:0">${esc(a.descripcion)}</h2>${esPruebaArr(a) ? chipPrueba : ''}${estChip(a.estado)}<span class="sp"></span><button class="sm" id="edA">Editar</button></div>
     <div class="muted small" style="margin-top:4px">${esc(m.nombre || '—')} · ${fl ? esc(fl.codigo + ' · ' + (fl.patente || '')) + (fl.anio ? ' · año ' + fl.anio : '') + ' · ' + propChip(fl) + ' · ' : ''}Cotización ${esc(a.cotizacion || '—')} · ${clp(a.tarifa)} / ${unidadMod(a.modalidad)} · Base ${nf(c.base)} ${unidadMod(a.modalidad)}${a.operador ? ' · Operador: ' + esc(a.operador) : ''}</div>
     <div class="muted small">Inicio ${fd(a.fecha_inicio) || '—'} · Vigente hasta ${fd(a.fecha_fin) || '—'} · Mov. ${clp(a.movilizacion)} ${c.movCobrada ? '✔ cobrada' : '(1er EDP)'} · Desmov. ${clp(a.desmovilizacion)} ${c.desmovCobrada ? '✔ cobrada' : '(EDP final)'} · ${a.requiere_hes ? 'Con HES' : 'Sin HES (particular)'}</div>
     ${a.notas ? `<div class="small" style="margin-top:6px">${esc(a.notas)}</div>` : ''}
@@ -968,8 +989,8 @@ function vCotizaciones() {
   const L = D.cotizaciones.filter(c => filtroCot === 'todas' || (filtroCot === 'abiertas' ? ['borrador', 'enviada'].includes(c.estado) : c.estado === filtroCot))
     .sort((x, y) => y.numero - x.numero || y.rev - x.rev);
   let env = 0, adj = 0, nEnv = 0;
-  D.cotizaciones.forEach(c => { const t = totCot(c).neto; if (c.estado === 'enviada') { env += t; nEnv++; } if (c.estado === 'adjudicada') adj += t; });
-  const cerr = D.cotizaciones.filter(c => ['adjudicada', 'perdida'].includes(c.estado)), tasa = cerr.length ? cerr.filter(c => c.estado === 'adjudicada').length / cerr.length : null;
+  D.cotizaciones.filter(c => !esPruebaCot(c)).forEach(c => { const t = totCot(c).neto; if (c.estado === 'enviada') { env += t; nEnv++; } if (c.estado === 'adjudicada') adj += t; });
+  const cerr = D.cotizaciones.filter(c => !esPruebaCot(c) && ['adjudicada', 'perdida'].includes(c.estado)), tasa = cerr.length ? cerr.filter(c => c.estado === 'adjudicada').length / cerr.length : null;
   $('view').innerHTML = `
   <div class="kpis">
     <div class="kpi"><div class="l">Enviadas esperando respuesta</div><div class="v">${nEnv} · ${clp(env)}</div></div>
@@ -981,7 +1002,7 @@ function vCotizaciones() {
     <span class="sp"></span><button class="pri" id="nC">+ Nueva cotización</button>
   </div>
   <div class="card tw"><table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Referencia</th><th class="n">Neto</th><th class="n hide-m">Utilidad</th><th>Estado</th></tr></thead><tbody>
-  ${L.map(c => { const t = totCot(c); return `<tr class="click" data-c="${c.id}"><td><b>${esc(nCot(c))}</b></td><td>${fd(c.fecha)}</td><td>${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}</td><td class="small">${esc(c.referencia || '')}</td><td class="n">${clp(t.neto)}</td><td class="n hide-m small">${t.costo ? clp(t.util) + ' (' + nf(t.margen * 100) + '%)' : '<span class="muted">sin costo</span>'}</td><td>${estCot(c.estado)}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No hay cotizaciones en esta vista.</td></tr>'}
+  ${L.map(c => { const t = totCot(c), tp = esPruebaCot(c); return `<tr class="click${tp ? ' prueba' : ''}" data-c="${c.id}"><td><b>${esc(nCot(c))}</b>${tp ? ' ' + chipPrueba : ''}</td><td>${fd(c.fecha)}</td><td>${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}</td><td class="small">${esc(c.referencia || '')}</td><td class="n">${clp(t.neto)}</td><td class="n hide-m small">${t.costo ? clp(t.util) + ' (' + nf(t.margen * 100) + '%)' : '<span class="muted">sin costo</span>'}</td><td>${estCot(c.estado)}${c.estado === 'adjudicada' && (!c.arriendo_id || !byId('arriendos', c.arriendo_id)) ? ' <span class="chip c-red" title="Adjudicada pero sin arriendo enlazado">⚠ sin arriendo</span>' : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No hay cotizaciones en esta vista.</td></tr>'}
   </tbody></table></div>`;
   $('fC').value = filtroCot;
   $('fC').onchange = e => { filtroCot = e.target.value; vCotizaciones(); };
@@ -1023,6 +1044,7 @@ function vCot(id) {
   if (!COT || COT.id !== id) COT = JSON.parse(JSON.stringify(src));
   const c = COT;
   $('view').innerHTML = `
+  ${esPruebaCot(c) ? '<div class="msg" style="background:#ede1ff;color:#6a3fb3">🧪 <b>Cotización de PRUEBA</b> (dice "prueba" en la referencia, las notas o el cliente): no cuenta en los totales ni aparece en el panel gerencial. Para que sea real, quite la palabra "prueba".</div>' : ''}
   <div class="row" style="margin-bottom:10px"><a href="#cotizar">← Cotizaciones</a><span class="sp"></span>
     <label class="row small" style="margin:0;cursor:pointer;gap:6px"><input type="checkbox" id="vInt" style="width:auto" ${verInternos ? 'checked' : ''}> Ver costos y utilidad</label></div>
   <div class="card">
@@ -1428,7 +1450,8 @@ function pasarArriendo() {
     const m = byId('mandantes', c.mandante_id), fin = addDays(val('paD') || todayISO(), modalidad === 'dia' ? Math.max(0, (+it.cantidad || 1) - 1) : 30);
     const o = {flota_id: val('paF') || null, descripcion: it.desc.slice(0, 120), mandante_id: c.mandante_id, cotizacion: nCot(c), modalidad, tarifa: it.precio,
       base_cobro: modalidad === 'global' ? 1 : it.cantidad, movilizacion: mov ? +mov.precio || 0 : 0, desmovilizacion: mov && (+mov.cantidad || 0) >= 2 ? +mov.precio || 0 : 0,
-      fecha_inicio: val('paD') || todayISO(), fecha_fin: fin, estado: oc ? 'con_oc' : 'palabra', requiere_hes: m ? m.requiere_hes : true};
+      fecha_inicio: val('paD') || todayISO(), fecha_fin: fin, estado: oc ? 'con_oc' : 'palabra', requiere_hes: m ? m.requiere_hes : true,
+      notas: esPruebaCot(c) ? `PRUEBA · desde cotización ${nCot(c)}` : null};
     guardar(async () => {
       const r = await ins('arriendos', o);
       await ins('periodos', {arriendo_id: r.id, n: 1, tipo: 'inicial', cantidad: o.base_cobro, tarifa: o.tarifa, desde: o.fecha_inicio, hasta: o.fecha_fin, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
@@ -1448,7 +1471,7 @@ function docCot(id) {
   <div class="card noprint"><div class="row" style="gap:8px">
     <button class="pri" id="dImg">🖼️ Copiar como imagen</button><button id="dPng">⬇️ Descargar imagen</button><button id="dTab">📋 Copiar como tabla</button><button id="dPrint">🖨️ PDF</button></div>
   <div class="small muted" style="margin-top:8px"><b>Copiar como imagen</b>: la pega en su informe de Word con Ctrl+V tal cual se ve (recomendado). <b>Copiar como tabla</b>: la pega editable en Word o Excel. Esta vista no muestra costos ni utilidad.</div></div>
-  <div class="ofwrap"><div id="ofBox" style="box-sizing:border-box;background:#fff;padding:18px;width:820px;max-width:100%;font-family:Calibri,Arial,sans-serif;color:#1b2430">${ofertaHTML(c, t, logo)}${pieOferta(c)}</div></div>`;
+  <div class="ofwrap"><div id="ofBox" style="box-sizing:border-box;background:#fff;padding:18px;width:820px;max-width:100%;font-family:Calibri,Arial,sans-serif;color:#1b2430">${esPruebaCot(c) ? '<div style="border:3px solid #c62828;color:#c62828;font-weight:700;font-size:20px;text-align:center;padding:6px;margin-bottom:10px;letter-spacing:2px">PRUEBA – NO ENVIAR</div>' : ''}${ofertaHTML(c, t, logo)}${pieOferta(c)}</div></div>`;
   $('dPrint').onclick = () => { const tt = document.title; document.title = `Oferta ${nCot(c)} - ${c.referencia || ''}`; window.print(); setTimeout(() => { document.title = tt; }, 1000); };
   $('dTab').onclick = async () => {
     const el = $('ofBox'), html = el.innerHTML;
