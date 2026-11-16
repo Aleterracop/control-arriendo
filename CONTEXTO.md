@@ -14,6 +14,9 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 4. `sql/04_cotizaciones_historicas.sql`: crea cotizaciones adjudicadas desde los arriendos (1248, 1296, 1307, 1310).
 5. `sql/05_conteo_dias.sql`: columna `arriendos.conteo_dias` (corridos | reportados).
 7. `sql/07_estado_dia.sql`: columna `horometros.estado` (operativo, sin_operacion, mantencion, falla_terracop, falla_mandante, taller).
+8. `sql/08_ajuste_horometros.sql`: ajuste HYPS-60 según reportes (10-09 = 7321, report 09-11, corte EDP 2 al 17-10).
+9. `sql/09_flota_planilla.sql`: flota con año, patente, modelo, propiedad (propio/leasing/arriendo) y tarifas de lista sin/con operador.
+10. `sql/10_costos_provisorios_y_1221.sql`: costo provisorio del catálogo = lista sin operador ÷ 1,2; HYPS-60 = cotización 1221.
 6. `sql/06_resumen_gerencial.sql`: función security definer `resumen_gerencial()` que alimenta el panel gerencial en vivo.
 
 ## Funciones de app.html
@@ -45,6 +48,9 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 - **Mandantes**: `requiere_hes` (mineras sí; particulares no, se registra la aprobación).
 
 ## Reglas de negocio acordadas
+- Tarifas de lista (planilla 16-11): "tarifa máquina" = precio sin operador; "con operador" = precio con operación continua turno día (2 operadores en rotación, mes completo c/u). Siempre conviene más con operador.
+- Patente confirmada: HSZC-48 (EXC-206). HYPS-60 = EXC-209, cotización 1221.
+- Costos del catálogo son PROVISORIOS (lista sin operador ÷ 1,2; martillo 2.875.000) hasta tener costos reales del taller (mantención, desgaste, seguro, reposición; leasing: cuota mensual). Todo precio y costo debe poder editarse a mano.
 - Base de horas por EDP: 180 h (mínimo mensual). Prórrogas normalmente de 180 h; Fenix exige cotización por cada extensión.
 - La movilización se cobra en el 1er EDP; las extensiones no la cobran; la desmovilización va en el EDP final.
 - La HES la emite el mandante al aprobar el EDP. Con N° de HES (o aprobación, si es particular), el EDP pasa a Finanzas. La facturación no es del área.
@@ -58,7 +64,6 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 ## Pendiente
 - EDP automático con formato Fenix: portada + "Estado Pago Contratista" (contrato, avance anterior, avance del período, acumulado, IVA) + respaldo de horómetros. Ejemplo recibido: EDP N°00001 OC 4300002595.
 - Avisos diarios por correo.
-- Confirmar patente: HSZC-48 vs HS2C-48.
 - Respaldo del EDP N°1 con posibles errores de tipeo:
   - 05-11: horómetro inicial 6803 → ¿6903?
   - report 27654 → ¿27564?

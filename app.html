@@ -221,6 +221,7 @@ async function loadAll() {
   D.hasConteo = D.arriendos.some(a => 'conteo_dias' in a);
   D.hasEstado = D.horometros.some(h => 'estado' in h);
   D.hasFallas = D.arriendos.some(a => 'descuenta_fallas' in a);
+  D.hasPropiedad = D.flota.some(f => 'propiedad' in f);
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -395,7 +396,7 @@ function vArriendos() {
     const fl = byId('flota', a.flota_id);
     return `<div class="ac" data-id="${a.id}">
       <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${estChip(a.estado)}</div>
-      <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
+      <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + (fl.anio ? ' (' + fl.anio + ')' : '') + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
       ${a.modalidad === 'global' ? '' : `<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
       <div class="small">${a.modalidad === 'hora' ? 'Horas' : 'Días'} del período: <b>${verU(a, c.pend)} / ${verU(a, c.base)}</b></div>`}
       <div class="small muted">${a.fecha_fin ? 'Vigente hasta ' + fd(a.fecha_fin) : ''}${c.diasFin != null && ['palabra', 'con_oc'].includes(a.estado) ? ` (${c.diasFin} días)` : ''}</div>
@@ -421,7 +422,7 @@ function formArriendo(a) {
   const flota = D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo));
   modal(`<h3>${nuevo ? 'Nuevo arriendo / servicio' : 'Editar arriendo'}</h3>
   <div class="f">
-    <div><label>Equipo de la flota (opcional)</label><select id="fFl">${opts(flota, a.flota_id, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Servicio sin equipo —')}</select></div>
+    <div><label>Equipo de la flota (opcional)</label><select id="fFl">${opts(flota, a.flota_id, flotaLab, '— Servicio sin equipo —')}</select></div>
     <div><label>Descripción</label><input id="fDe" value="${esc(a.descripcion || '')}" placeholder="Ej. Excavadora CAT 320 con operador"></div>
     <div><label>Mandante</label><select id="fMa">${opts(D.mandantes.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), a.mandante_id, m => m.nombre, '— Elegir —')}<option value="__nuevo">➕ Agregar mandante nuevo…</option></select></div>
     <div><label>N° cotización</label><input id="fCo" value="${esc(a.cotizacion || '')}"></div>
@@ -496,7 +497,7 @@ function vArriendo(id) {
   <div class="row" style="margin-bottom:10px"><a href="#arriendos">← Arriendos</a></div>
   <div class="card">
     <div class="row"><h2 style="margin:0">${esc(a.descripcion)}</h2>${estChip(a.estado)}<span class="sp"></span><button class="sm" id="edA">Editar</button></div>
-    <div class="muted small" style="margin-top:4px">${esc(m.nombre || '—')} · ${fl ? esc(fl.codigo + ' · ' + (fl.patente || '')) + ' · ' : ''}Cotización ${esc(a.cotizacion || '—')} · ${clp(a.tarifa)} / ${unidadMod(a.modalidad)} · Base ${nf(c.base)} ${unidadMod(a.modalidad)}${a.operador ? ' · Operador: ' + esc(a.operador) : ''}</div>
+    <div class="muted small" style="margin-top:4px">${esc(m.nombre || '—')} · ${fl ? esc(fl.codigo + ' · ' + (fl.patente || '')) + (fl.anio ? ' · año ' + fl.anio : '') + ' · ' + propChip(fl) + ' · ' : ''}Cotización ${esc(a.cotizacion || '—')} · ${clp(a.tarifa)} / ${unidadMod(a.modalidad)} · Base ${nf(c.base)} ${unidadMod(a.modalidad)}${a.operador ? ' · Operador: ' + esc(a.operador) : ''}</div>
     <div class="muted small">Inicio ${fd(a.fecha_inicio) || '—'} · Vigente hasta ${fd(a.fecha_fin) || '—'} · Mov. ${clp(a.movilizacion)} ${c.movCobrada ? '✔ cobrada' : '(1er EDP)'} · Desmov. ${clp(a.desmovilizacion)} ${c.desmovCobrada ? '✔ cobrada' : '(EDP final)'} · ${a.requiere_hes ? 'Con HES' : 'Sin HES (particular)'}</div>
     ${a.notas ? `<div class="small" style="margin-top:6px">${esc(a.notas)}</div>` : ''}
     <div class="row" style="margin-top:10px">
@@ -822,6 +823,9 @@ function formEdp(a, e, final) {
 }
 
 /* ---------------- Vista: Flota ---------------- */
+const propOf = f => f.propiedad || (f.propio === false ? 'arriendo' : 'propio');
+const propChip = f => ({propio: '<span class="chip c-green">Propio</span>', leasing: '<span class="chip c-blue">Leasing</span>', arriendo: '<span class="chip c-orange">Arrendado a terceros</span>'}[propOf(f)]);
+const flotaLab = f => `${f.codigo} · ${f.tipo || ''} ${f.modelo || ''}${f.anio ? ' · ' + f.anio : ''} · ${{propio: 'Propio', leasing: 'Leasing', arriendo: 'Terceros'}[propOf(f)]}${f.patente ? ' · ' + f.patente : ''}`;
 let qFl = '';
 function vFlota() {
   const q = qFl.toLowerCase();
@@ -829,10 +833,11 @@ function vFlota() {
     .sort((x, y) => (+y.activo - +x.activo) || (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo));
   const enArr = id => D.arriendos.find(a => a.flota_id === id && ['palabra', 'con_oc'].includes(a.estado));
   $('view').innerHTML = `<div class="row" style="margin-bottom:12px"><input id="qF" placeholder="Buscar por código, patente, tipo o modelo" style="max-width:340px" value="${esc(qFl)}"><span class="sp"></span><button class="pri" id="nF">+ Agregar equipo</button></div>
-  <div class="card tw"><table><thead><tr><th>Código</th><th>Patente</th><th>Tipo</th><th>Modelo</th><th class="hide-m">Tarifa catálogo</th><th>Situación</th></tr></thead><tbody>
-  ${L.map(f => { const t = byId('equipo_tipos', f.tipo_id), a = enArr(f.id); return `<tr class="click" data-f="${f.id}" style="${f.activo ? '' : 'opacity:.5'}"><td><b>${esc(f.codigo)}</b></td><td>${esc(f.patente || '')}</td><td>${esc(f.tipo || '')}</td><td>${esc(f.modelo || '')}</td>
+  <div class="card tw"><table><thead><tr><th>Código</th><th>Patente</th><th>Tipo</th><th>Modelo</th><th class="n">Año</th><th>Propiedad</th><th class="n hide-m">Lista sin op.</th><th class="n hide-m">Lista con op.</th><th class="hide-m">Costo catálogo</th><th>Situación</th></tr></thead><tbody>
+  ${L.map(f => { const t = byId('equipo_tipos', f.tipo_id), a = enArr(f.id); return `<tr class="click" data-f="${f.id}" style="${f.activo ? '' : 'opacity:.5'}"><td style="white-space:nowrap"><b>${esc(f.codigo)}</b></td><td style="white-space:nowrap">${esc(f.patente || '')}</td><td>${esc(f.tipo || '')}</td><td>${esc(f.modelo || '')}</td><td class="n">${f.anio || ''}</td><td>${propChip(f)}</td>
+  <td class="n hide-m">${f.tarifa_lista ? clp(f.tarifa_lista) : ''}</td><td class="n hide-m">${f.tarifa_lista_operador ? clp(f.tarifa_lista_operador) : ''}</td>
   <td class="hide-m">${t ? (t.tarifa ? clp(t.tarifa) + ' / ' + esc(t.unidad) : '<span class="chip c-amber">Pendiente de precio</span>') : '—'}</td>
-  <td>${!f.activo ? '<span class="chip">De baja</span>' : a ? '<span class="chip c-blue">Arrendado · ' + esc(mandante(a).nombre || '') + '</span>' : ''}${f.propio ? '' : ' <span class="chip c-orange">Terceros</span>'}</td></tr>`; }).join('')}
+  <td>${!f.activo ? '<span class="chip">De baja</span>' : a ? '<span class="chip c-blue">Arrendado · ' + esc(mandante(a).nombre || '') + '</span>' : ''}</td></tr>`; }).join('')}
   </tbody></table></div>`;
   $('qF').oninput = e => { qFl = e.target.value; const p = e.target.selectionStart; vFlota(); $('qF').focus(); $('qF').setSelectionRange(p, p); };
   $('nF').onclick = () => formFlota();
@@ -847,14 +852,18 @@ function formFlota(f) {
     <div><label>Modelo</label><input id="qM" value="${esc(f.modelo || '')}"></div>
     <div><label>Año</label><input id="qA" inputmode="numeric" value="${f.anio ?? ''}"></div>
     <div><label>Tarifa del catálogo</label><select id="qTi">${opts(D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), f.tipo_id, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Ninguna / crear en Catálogo —')}</select></div>
-    <div><label>Propiedad</label><select id="qPr"><option value="1" ${f.propio ? 'selected' : ''}>Propio</option><option value="0" ${!f.propio ? 'selected' : ''}>De terceros (subarriendo)</option></select></div>
+    <div><label>Propiedad</label><select id="qPr">${[['propio', 'Propio Terracop'], ['leasing', 'Leasing'], ['arriendo', 'Arrendado a terceros']].map(([k, l]) => `<option value="${k}" ${propOf(f) === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+    <div><label>Cobro por</label><select id="qUc"><option value="hm" ${f.unidad_cobro !== 'mes' ? 'selected' : ''}>Hora máquina</option><option value="mes" ${f.unidad_cobro === 'mes' ? 'selected' : ''}>Mes</option></select></div>
+    <div><label>Tarifa de lista sin operador $</label><input id="qTl" inputmode="numeric" value="${f.tarifa_lista ?? ''}"></div>
+    <div><label>Tarifa de lista con operador $</label><input id="qTo" inputmode="numeric" value="${f.tarifa_lista_operador ?? ''}"></div>
     <div><label>Situación</label><select id="qAc"><option value="1" ${f.activo ? 'selected' : ''}>Activo</option><option value="0" ${!f.activo ? 'selected' : ''}>Dado de baja / vendido</option></select></div></div>
     <div style="margin-top:10px"><label>Notas</label><input id="qN" value="${esc(f.notas || '')}"></div>
     <div class="mf"><button id="qCan">Cancelar</button><button class="pri" id="qOk">Guardar</button></div>`);
   $('qCan').onclick = closeModal;
   $('qOk').onclick = () => {
     if (!val('qC')) return alert('Escriba el código interno.');
-    const o = {codigo: val('qC'), patente: val('qP') || null, tipo: val('qT').toUpperCase() || null, modelo: val('qM') || null, anio: num(val('qA')), tipo_id: val('qTi') || null, propio: val('qPr') === '1', activo: val('qAc') === '1', notas: val('qN') || null};
+    const o = {codigo: val('qC'), patente: val('qP') || null, tipo: val('qT').toUpperCase() || null, modelo: val('qM') || null, anio: num(val('qA')), tipo_id: val('qTi') || null, propio: val('qPr') !== 'arriendo', activo: val('qAc') === '1', notas: val('qN') || null};
+    if (D.hasPropiedad) Object.assign(o, {propiedad: val('qPr'), unidad_cobro: val('qUc'), tarifa_lista: num(val('qTl')), tarifa_lista_operador: num(val('qTo'))});
     guardar(() => nuevo ? ins('flota', o) : upd('flota', f.id, o), 'Equipo guardado');
   };
 }
@@ -1221,7 +1230,7 @@ function ultimoPrecio(T, excluirId) {
 
 /* ---------- Asistente: agregar equipo del catálogo ---------- */
 function asistenteEquipo() {
-  const tipos = D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), ops = D.personal.filter(p => /operador/i.test(p.cargo)).sort((x, y) => x.cargo.localeCompare(y.cargo));
+  const tipos = D.equipo_tipos.slice().sort((x, y) => x.nombre.localeCompare(y.nombre)), ops = D.personal.filter(p => /operador|conductor/i.test(p.cargo)).sort((x, y) => x.cargo.localeCompare(y.cargo));
   modal(`<h3>Agregar equipo a la cotización</h3>
   <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
   <div class="f">
@@ -1254,7 +1263,9 @@ function asistenteEquipo() {
     const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6);
     const rows = [];
     if (T) rows.push({c: 'Equipo ' + T.nombre, u, q: q * n, p: tar});
-    if (o) rows.push({c: o.cargo + (val('wTu') !== '5x2' ? ' (turno ' + val('wTu') + ', operadores en rotación)' : ''), u: 'HH', q: Math.max(hrs, u === 'hm' ? 0 : hrs) * n, p: Math.round(+o.valor_hh || 0)});
+    // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
+    const rot = val('wTu') !== '5x2' && (u === 'mes' || hrs >= P('horas_mes', 180)) ? 2 : 1;
+    if (o) rows.push({c: o.cargo + (rot === 2 ? ` × 2 (turno ${val('wTu')}, 2 operadores en rotación, mes completo c/u)` : ''), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
     if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
     const rc = (num(val('wRc')) || 0) / 100;
@@ -1266,7 +1277,16 @@ function asistenteEquipo() {
         $('wRef').innerHTML = `<div class="msg info small" style="margin:0">📌 <b>Último precio cotizado:</b> ${clp(h.precio)} / ${esc(h.unidad)} · ${esc(h.origen)} · ${esc(h.mand)} · ${fd(h.fecha)} (${esc(h.estado)})${pv && h.unidad !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
           ${pv ? ` <button class="sm" id="wUseRef" style="margin-left:6px">Usar ${clp(pv)}</button>` : ''}${H.length > 1 ? `<div class="muted" style="margin-top:3px">Otros: ${H.slice(1, 4).map(x => `${clp(x.precio)}/${esc(x.unidad)} (${esc(x.origen)})`).join(' · ')}</div>` : ''}</div>`;
         if ($('wUseRef')) $('wUseRef').onclick = () => { $('wP').value = pv; calc(); }; }
-      else $('wRef').innerHTML = '<div class="small muted">Sin cotizaciones anteriores de este equipo.</div>'; }
+      else $('wRef').innerHTML = '<div class="small muted">Sin cotizaciones anteriores de este equipo.</div>';
+      const U = D.flota.filter(f => f.activo && f.tipo_id === T.id && (f.tarifa_lista || f.tarifa_lista_operador));
+      if (U.length) { const conOp = !!val('wO'), key = conOp ? 'tarifa_lista_operador' : 'tarifa_lista', vals = [...new Set(U.map(f => +f[key]).filter(Boolean))];
+        const uL = U[0].unidad_cobro === 'mes' ? 'mes' : 'hm', pv = vals.length ? Math.round(conv(vals[0], uL, u)) : null;
+        $('wRef').innerHTML += `<div class="msg ok small" style="margin:6px 0 0">📋 <b>Tarifa de lista ${conOp ? 'con operador' : 'sin operador'}:</b> ${vals.length ? vals.map(v => clp(v)).join(' / ') + ' / ' + uL : 'sin valor'}${pv && uL !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
+          ${pv ? ` <button class="sm" id="wUseLista" style="margin-left:6px">Usar ${clp(pv)}</button>` : ''}
+          <div class="muted" style="margin-top:3px">${U.map(f => `${esc(f.codigo)}${f.anio ? ' (' + f.anio + ')' : ''} ${{propio: 'propio', leasing: 'leasing', arriendo: 'terceros'}[propOf(f)]}`).join(' · ')}</div></div>`;
+        if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
+        if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
+    }
     res = {rows, cu, precio, cant, u};
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
@@ -1289,7 +1309,9 @@ function asistenteEquipo() {
     desc(); };
   $('wT').onchange = () => { const T = t(); if (!T) return; tarCat = T.tarifa ? +T.tarifa : null; uCat = T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm';
     $('wU').value = uCat; qTocada = false;
-    const op = D.personal.find(p => /operador/i.test(p.cargo) && T.nombre.split(' ')[0].length > 3 && p.cargo.toLowerCase().includes(T.nombre.split(' ')[0].toLowerCase().slice(0, 6))); $('wO').value = op ? op.id : '';
+    const pal = normTxt(T.nombre).split(/\s+/).filter(w => w.length > 3);
+    let op = null, best = 0; ops.forEach(p => { const c = normTxt(p.cargo), cw = c.split(/\s+/), sc = pal.reduce((t, w) => t + (cw.some(x => x.startsWith(w.slice(0, 6))) ? 1 : 0), 0); if (sc > best) { best = sc; op = p; } });
+    $('wO').value = op ? op.id : '';
     if (!T.tarifa) { $('wTa').value = ''; toast('Este equipo no tiene tarifa: escriba el costo a mano'); }
     unidad(); $('wD').placeholder = diasDef(); calc(); };
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
@@ -1377,7 +1399,7 @@ function pasarArriendo() {
     <div><label>¿Qué es esta cotización?</label><select id="paTipo"><option value="nuevo">Arriendo nuevo (lleva movilización)</option><option value="prorroga">Prórroga de un arriendo que ya está en faena</option></select></div>
     <div id="paArrW" hidden><label>Arriendo a prorrogar</label><select id="paArr">${opts(D.arriendos.filter(a => ['palabra', 'con_oc'].includes(a.estado) && (!c.mandante_id || a.mandante_id === c.mandante_id)), null, a => a.descripcion + (a.cotizacion ? ' · ' + a.cotizacion : ''), '— Elegir —')}</select></div>
     <div><label>Ítem a arrendar</label><select id="paI">${eqs.map((it, k) => `<option value="${k}">${esc(it.item)} · ${esc(it.desc.slice(0, 60))}</option>`).join('')}</select></div>
-    <div id="paFW"><label>Equipo de la flota</label><select id="paF">${opts(D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo)), null, f => `${f.codigo} · ${f.tipo} ${f.modelo || ''} · ${f.patente || ''}`, '— Elegir después —')}</select></div>
+    <div id="paFW"><label>Equipo de la flota</label><select id="paF">${opts(D.flota.filter(f => f.activo).sort((x, y) => (x.tipo || '').localeCompare(y.tipo || '') || x.codigo.localeCompare(y.codigo)), null, flotaLab, '— Elegir después —')}</select></div>
     <div><label>Fecha de inicio</label><input type="date" id="paD" value="${todayISO()}"></div>
     <div><label>N° OC / SolPed (si ya llegó)</label><input id="paO"></div>
   </div>
