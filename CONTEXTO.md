@@ -78,3 +78,5 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 - Datos vivos: tabla, totales y spans `data-v` (cliente, días, horas, faena, validez, RUT) se recalculan desde la cotización; los bloques editados quedan en `doc.txt`.
 - Revisión antes de enviar (contacto, faena, precios, costos, precios distintos en equipos iguales, utilidad baja, prueba). PDF por imprimir (carta, nombre "Cotización N° ddmmaaaa") y Word .docx propio.
 - Asistente: turno "Continuo · horario libre" (1 operador) y `meta` por ítem (turno, días, horas, operador, alimentación, combustible).
+- 17-11 tarde: precio único/recomendado por grupo de equipos (meta de ganancia por hora en `parametros.meta_ganancia_hora`, meta sugerida, precio automático `item.pauto` = min/reco, alerta si precio < mínimo). Turno 8x6 en asistente.
+- SQL 13: costo interno de cada tipo = "Tarifa Máquina" (sin operador) de la planilla, ya no lista ÷ 1,2 (el 33.333 causó confusión). Catálogo → Equipos muestra y edita tarifa sin operador y con operador (actualiza todas las unidades del tipo en flota) + costo interno.

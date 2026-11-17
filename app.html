@@ -926,12 +926,23 @@ function formFlota(f) {
 /* ---------------- Vista: Catálogo ---------------- */
 let tabC = 'equipo_tipos';
 const CAT = {
-  equipo_tipos: {t: 'Equipos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['tarifa', 'Tarifa $', 'n'], ['consumo_lh', 'Diésel l/h', 'n'], ['balde_m3', 'Balde m³', 'n'], ['notas', 'Notas', 't']]},
+  equipo_tipos: {t: 'Equipos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['_l0', 'Tarifa lista sin operador (cliente)', 'calc'], ['_l1', 'Tarifa lista con operador (cliente)', 'calc'], ['tarifa', 'Costo interno $ (Terracop)', 'n'], ['consumo_lh', 'Diésel l/h', 'n'], ['balde_m3', 'Balde m³', 'n'], ['notas', 'Notas', 't']]},
   personal: {t: 'Personal', cols: [['cargo', 'Cargo', 't'], ['sueldo', 'Sueldo líquido $', 'n'], ['valor_hh', 'Valor HH $', 'n'], ['notas', 'Notas', 't']]},
   materiales: {t: 'Materiales, servicios e insumos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['precio', 'Precio $', 'n'], ['notas', 'Notas', 't']]},
   proveedor_equipos: {t: 'Equipos de proveedores (UF)', cols: [['proveedor', 'Proveedor', 't'], ['equipo', 'Equipo', 't'], ['unidad', 'Unidad', 't'], ['costo_uf', 'Costo UF', 'n'], ['_clp', '$ con UF de la app', 'calc'], ['costo_clp', 'o costo en $', 'n'], ['notas', 'Notas', 't']]},
   parametros: {t: 'Parámetros', cols: [['clave', 'Clave', 'r'], ['descripcion', 'Descripción', 'r'], ['valor', 'Valor', 'n']]}
 };
+function listaTipo(tid, conOp) {   // tarifas de lista (planilla de flota) de las unidades de ese tipo
+  const U = D.flota.filter(f => f.activo !== false && f.tipo_id === tid), vals = [...new Set(U.map(f => +(conOp ? f.tarifa_lista_operador : f.tarifa_lista)).filter(Boolean))].sort((a, b) => a - b);
+  if (!vals.length) return '<span class="muted">—</span>';
+  const u = U.find(f => +(conOp ? f.tarifa_lista_operador : f.tarifa_lista)) || {};
+  return vals.map(v => clp(v)).join(' / ') + `<span class="muted" style="font-weight:400"> /${u.unidad_cobro === 'mes' ? 'mes' : 'hm'}</span>`;
+}
+function inputLista(tid, conOp) {
+  const k = conOp ? 'tarifa_lista_operador' : 'tarifa_lista', U = D.flota.filter(f => f.activo !== false && f.tipo_id === tid), vals = [...new Set(U.map(f => +f[k]).filter(Boolean))];
+  if (!U.length) return '<span class="muted small">sin unidades en flota</span>';
+  return `<input data-lista="${k}" data-tid="${tid}" inputmode="numeric" value="${vals.length === 1 ? vals[0] : ''}" placeholder="${vals.length > 1 ? vals.map(v => nf(v)).join(' / ') : '—'}" style="text-align:right;max-width:120px" title="Se aplica a las ${U.length} unidad(es) de este tipo en Flota">`;
+}
 function vCatalogo() {
   const tabsH = `<div class="tabs">${Object.entries(CAT).map(([k, v]) => `<button data-c="${k}" class="${tabC === k ? 'on' : ''}">${v.t}</button>`).join('')}<button data-c="empresa" class="${tabC === 'empresa' ? 'on' : ''}">Empresa y firma</button></div>`;
   if (tabC === 'empresa') {
@@ -943,12 +954,18 @@ function vCatalogo() {
   const C = CAT[tabC];
   const rows = (D[tabC] || []).slice().sort((x, y) => String(x[C.cols[0][0]]).localeCompare(String(y[C.cols[0][0]])));
   $('view').innerHTML = `${tabsH}
-  <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa vacía = pendiente de precio.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}${tabC === 'proveedor_equipos' ? ` Costo neto (sin IVA) que cobra el proveedor, solo equipo. UF de la app: <b>${clp(P('uf', 40000))}</b> (cámbiela en Parámetros).` : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
+  <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa sin operador y con operador = valores de su planilla (al cambiarlas aquí se actualizan todas las unidades de ese tipo en Flota). El costo interno es lo que le cuesta la máquina a Terracop: sirve para calcular la utilidad y no sale en la oferta.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}${tabC === 'proveedor_equipos' ? ` Costo neto (sin IVA) que cobra el proveedor, solo equipo. UF de la app: <b>${clp(P('uf', 40000))}</b> (cámbiela en Parámetros).` : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
   <div class="card tw"><table><thead><tr>${C.cols.map(c => `<th class="${c[2] === 'n' ? 'n' : ''}">${c[1]}</th>`).join('')}${tabC === 'equipo_tipos' ? '<th>Actualizado</th>' : ''}${tabC !== 'parametros' ? '<th></th>' : ''}</tr></thead><tbody>
-  ${rows.map(r => `<tr>${C.cols.map(c => c[2] === 'calc' ? `<td class="n"><b>${r.costo_uf ? clp(r.costo_uf * P('uf', 40000)) : r.costo_clp ? clp(r.costo_clp) : '—'}</b></td>` : c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
+  ${rows.map(r => `<tr>${C.cols.map(c => (c[0] === '_l0' || c[0] === '_l1') ? `<td class="n">${inputLista(r.id, c[0] === '_l1')}</td>` : c[2] === 'calc' ? `<td class="n"><b>${c[0] === '_clp' ? (r.costo_uf ? clp(r.costo_uf * P('uf', 40000)) : r.costo_clp ? clp(r.costo_clp) : '—') : listaTipo(r.id, c[0] === '_l1')}</b></td>` : c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
   ${tabC === 'equipo_tipos' ? `<td class="small">${r.tarifa == null ? '<span class="chip c-amber">Sin precio</span>' : fd(r.tarifa_fecha) || ''}</td>` : ''}${tabC !== 'parametros' ? `<td><button class="sm dan" data-del="${r.id}">✕</button></td>` : ''}</tr>`).join('')}
   </tbody></table></div>`;
   document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); });
+  document.querySelectorAll('input[data-lista]').forEach(inp => inp.onchange = async () => {
+    const v = num(inp.value), k = inp.dataset.lista, tid = inp.dataset.tid, n = D.flota.filter(f => f.activo !== false && f.tipo_id === tid).length;
+    if (!confirm(`¿Poner ${v ? clp(v) : 'vacío'} como tarifa ${k === 'tarifa_lista' ? 'sin operador' : 'con operador'} en las ${n} unidad(es) de este tipo?`)) { vCatalogo(); return; }
+    try { await api(`flota?tipo_id=eq.${tid}&activo=eq.true`, {method: 'PATCH', body: JSON.stringify({[k]: v})}); await loadAll(); toast('Tarifa guardada'); vCatalogo(); }
+    catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
+  });
   document.querySelectorAll('td input[data-k]').forEach(inp => inp.onchange = async () => {
     const k = inp.dataset.k, v = inp.dataset.n === '1' ? num(inp.value) : (inp.value.trim() || null), o = {[k]: v};
     try {
@@ -1376,7 +1393,7 @@ function asistenteEquipo() {
   modal(`<h3>Agregar equipo a la cotización</h3>
   <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
   <div class="f">
-    <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => { const L = D.flota.filter(f => f.tipo_id === t.id && +f.tarifa_lista).map(f => +f.tarifa_lista); return `${t.nombre} · costo interno ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin costo'}${/provisori/i.test(t.notas || '') ? ' (provisorio)' : ''}${L.length ? ' · lista ' + clp(Math.max(...L)) : ''}`; }, '— Elegir —')}</select></div>
+    <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => { const F = D.flota.filter(f => f.tipo_id === t.id), L0 = F.map(f => +f.tarifa_lista).filter(Boolean), L1 = F.map(f => +f.tarifa_lista_operador).filter(Boolean); return `${t.nombre}${L0.length ? ' · lista sin op. ' + clp(Math.max(...L0)) : ''}${L1.length ? ' · con op. ' + clp(Math.max(...L1)) : ''} · costo interno ${t.tarifa ? clp(t.tarifa) : 'sin costo'}${/provisori/i.test(t.notas || '') ? ' (prov.)' : ''}`; }, '— Elegir —')}</select></div>
     <div><label>Origen del equipo</label><select id="wOr"><option value="propio">Propio Terracop</option><option value="sub">Subarrendado a proveedor</option></select></div>
     <div id="wPeW" hidden><label>Equipo del proveedor (catálogo)</label><select id="wPe"><option value="">— Escribir a mano —</option></select></div>
     <div id="wProvW" hidden><label>Proveedor</label><input id="wProv" placeholder="Ej. Rental, Finning…"></div>
