@@ -1641,7 +1641,7 @@ function textosBase(c, S, minera) {
   const minimo = S.horas ? `, con un mínimo de ${V('horas')} horas máquina por equipo` : '';
   const ops = S.op ? ' con operador' : '';
   const T = {};
-  T.carta = `<p>Señor(a):<br><b>${V('contacto')}</b>${c.atencion_cargo || minera ? '<br>' + V('cargo') : ''}<br>${V('cliente')}<br><u>Presente</u></p>
+  T.carta = `<p>${c.atencion || minera ? `Señor(a):<br><b>${V('contacto')}</b>${c.atencion_cargo || minera ? '<br>' + V('cargo') : ''}<br>${V('cliente')}` : `Señores:<br><b>${V('cliente')}</b>`}<br><u>Presente</u></p>
 <p>De nuestra consideración:</p>
 <p>Adjuntamos a usted nuestra oferta económica correspondiente al “${V('ref')}”${c.faena ? ', a ejecutarse en ' + V('faena') : ''}, la cual considera los alcances que se describen a continuación.</p>
 <p>Sin otro particular, saluda atentamente a usted,</p>`;
@@ -1703,7 +1703,8 @@ function chequeoEnvio(c, S, minera) {
   const L = [], its = (c.items || []).filter(i => i.tipo === 'i'), vis = its.filter(i => !i.oculto), add = (lv, t) => L.push({lv, t});
   if (esPruebaCot(c)) add('red', 'Es una cotización de <b>PRUEBA</b>: el documento sale con el timbre "PRUEBA – NO ENVIAR".');
   if (!c.mandante_id && !c.cliente) add('red', 'Falta el <b>mandante / cliente</b>.');
-  if (!c.atencion) add(minera ? 'red' : 'orange', 'Falta el <b>contacto</b> a quién va dirigida la carta (campo "Contacto" en la cotización).');
+  if (!c.atencion) add(minera ? 'red' : 'info', minera ? 'Falta el <b>contacto</b> a quién va dirigida la carta (campo "Contacto" en la cotización).' : 'Sin <b>contacto</b>: la carta va dirigida a "Señores: ' + esc(c.cliente || '') + '". Si conoce el nombre de la persona, escríbalo en "Contacto".');
+  else if (c.cliente && normTxt(c.atencion).includes(normTxt(c.cliente).split(' ')[0]) && /sr|empresa|spa|ltda|s\.a/i.test(c.atencion)) add('orange', 'En "Contacto" escribió el nombre de la empresa. Ahí va el nombre de la <b>persona</b>; si no lo sabe, déjelo vacío y la carta dirá "Señores: ' + esc(c.cliente) + '".');
   if (!c.atencion_cargo && minera) add('orange', 'Falta el <b>cargo del contacto</b>.');
   if (!c.faena && (minera || S.mov)) add(minera ? 'red' : 'orange', 'Falta la <b>faena / lugar de trabajo</b>' + (minera ? '.' : ' (por ahora dice "el lugar de trabajo indicado por el mandante").'));
   vis.forEach(i => { if (!(+i.precio)) add('red', `<b>${esc(i.item)}</b> ${esc((i.desc || '').slice(0, 45))}: sin precio.`); else if (!(+i.cantidad)) add('red', `<b>${esc(i.item)}</b>: cantidad en cero.`); });
