@@ -1169,7 +1169,7 @@ function renderItems() {
       <td class="n"><b data-tot="${i}"></b></td>
       ${verInternos ? `<td class="n"><input data-i="${i}" data-k="costo" data-n="1" inputmode="numeric" value="${it.costo ?? ''}" style="text-align:right" placeholder="—"></td><td class="n small" data-ut="${i}"></td>` : ''}
       <td class="n">${it.tipo === 'i' ? `<button class="sm" data-apu="${i}" title="Calcular costo y precio (APU)">🧮</button>` : ''}${btnsItem(i)}</td></tr>`).join('') || `<tr><td colspan="9" class="muted">Agregue ítems con los botones de arriba.</td></tr>`;
-  tb.querySelectorAll('input[data-k]').forEach(inp => inp.oninput = () => { const it = c.items[+inp.dataset.i]; it[inp.dataset.k] = inp.dataset.n ? num(inp.value) : inp.value; updTot(); });
+  tb.querySelectorAll('input[data-k]').forEach(inp => inp.oninput = () => { const it = c.items[+inp.dataset.i]; it[inp.dataset.k] = inp.dataset.n ? num(inp.value) : inp.value; if (inp.dataset.k === 'precio' && it.pauto) { c.items.forEach(x => { if (x.equipo_tipo_id === it.equipo_tipo_id && x.unidad === it.unidad) delete x.pauto; }); toast('Precio en modo manual (lo escribió usted)'); } updTot(); });
   tb.querySelectorAll('input[data-k="desc"][list]').forEach(inp => inp.onchange = () => {
     const it = c.items[+inp.dataset.i], x = CI.get(inp.value.trim().toLowerCase()); if (!x) return;
     it.unidad = x.unidad; if (x.costo != null) it.costo = Math.round(x.costo);
@@ -1238,7 +1238,13 @@ function referenciasMercado(T, u, conOp, excluirId) {
   const vals = U.map(f => { const v = +f[key]; if (!v) return null; const uf = f.unidad_cobro === 'mes' ? 'mes' : 'hm'; if (uf === u) return v; const hm = P('horas_mes', 180); return uf === 'mes' && u === 'hm' ? v / hm : uf === 'hm' && u === 'mes' ? v * hm : null; }).filter(Boolean);
   return {lista: vals.length ? Math.max(...vals) : null, adj: adj.slice(0, 3)};
 }
+let PU_PEND = [], META_SUG = null;
+function gananciaHistorica() {   // promedio de (precio − costo) por unidad en equipos de cotizaciones adjudicadas
+  const L = []; D.cotizaciones.filter(c => c.estado === 'adjudicada' && !esPruebaCot(c)).forEach(c => (c.items || []).forEach(it => { if (it.tipo === 'i' && it.equipo_tipo_id && +it.precio && it.costo != null && it.costo !== '' && it.unidad === 'hm') L.push(+it.precio - +it.costo); }));
+  return L.length ? {v: L.reduce((a, b) => a + b, 0) / L.length, n: L.length} : null;
+}
 function precioUnicoHTML(c) {
+  PU_PEND = []; META_SUG = null;
   const meta = P('meta_ganancia_hora', 0), gg = +(c.gg ?? 0), ut = +(c.utilidad ?? P('utilidad', 0.2));
   const html = gruposEquipos(c).map(ix => {
     const its = ix.map(i => c.items[i]), sub = its.some(x => x.proveedor);
@@ -1254,20 +1260,31 @@ function precioUnicoHTML(c) {
     }
     const rango = `<div style="margin-top:4px">📊 <b>Rango:</b> mínimo ${clp(sug)}${ult ? ` · último adjudicado ${clp(ult.precio)} (${esc(ult.mand)}, ${fd(ult.fecha)})` : ''}${R.lista ? ` · lista ${conOp ? 'con operador' : 'sin operador'} ${clp(R.lista)}` : ''} → <b>recomendado ${clp(reco)}/${esc(u)}</b>. ${nota}${actualRef(its) > (R.lista || Infinity) * 1.05 ? ' <b style="color:var(--orange)">Su precio actual está sobre la lista: puede costar adjudicarse.</b>' : ''}</div>`;
     if (its.length < 2 && !sub && !mercado) return '';
+    if (!META_SUG && u === 'hm') { const H = gananciaHistorica();
+      META_SUG = mercado && mercado > maxC * 1.1 ? {v: Math.floor((mercado - maxC) / 500) * 500, why: `lo que deja el precio de mercado (≈ ${clp(mercado)}) en el equipo de mayor costo (${clp(maxC)})`}
+        : H ? {v: Math.floor(H.v / 500) * 500, why: `el promedio ganado por hora en ${H.n} ítem(s) de cotizaciones adjudicadas`}
+        : {v: Math.floor(maxC * 0.2 / 500) * 500, why: 'el 20% del costo del equipo de mayor costo (no hay precios de mercado para comparar)'}; }
+    const modo = (its.find(x => x.pauto) || {}).pauto || '', obj = modo === 'min' ? sug : modo === 'reco' ? reco : null;
+    if (obj && its.some(x => +x.precio !== obj)) PU_PEND.push({ix, v: obj});
     const precios = [...new Set(its.map(x => +x.precio || 0))], iguales = precios.length === 1, actual = precios[0];
     const gan = p => its.map(x => `${esc(x.item)}${x.proveedor ? ' (' + esc(x.proveedor) + ')' : ''}: <b>${clp(p - x.costo)}</b>/${esc(u)}`).join(' · ');
-    return `<div class="msg ${iguales && actual >= sug ? 'ok' : 'info'} small" style="margin:8px 0 0">
+    const bajo = !modo && Math.min(...its.map(x => +x.precio || 0)) < sug;
+    return `<div class="msg ${iguales && actual >= sug ? 'ok' : 'info'} small" style="margin:8px 0 0">${bajo ? `<div style="background:#fde0e0;color:#8f1d16;border-radius:8px;padding:6px 8px;margin-bottom:6px;font-size:13.5px">⛔ <b>Con los costos actuales, su precio de ${clp(Math.min(...its.map(x => +x.precio || 0)))} queda bajo el mínimo.</b> Para cumplir su meta debe cobrar al menos <b>${clp(sug)}</b>; lo recomendado es <b>${clp(reco)}</b>. Use los botones de abajo o elija "Precio: automático".</div>` : ''}
       🚜 <b>${esc(T.nombre || 'Equipo')}</b> (${its.map(x => esc(x.item)).join(', ')}): el costo más alto es ${clp(maxC)}/${esc(u)} en ${esc(caro.item)}${caro.proveedor ? ' (' + esc(caro.proveedor) + ')' : ''}.
       <b>Precio único sugerido: ${clp(sug)}/${esc(u)}</b> ${meta ? `(para ganar al menos ${clp(meta)} por ${esc(u)} en cada equipo)` : `(${nf(ut * 100)}% de utilidad sobre el de mayor costo)`} → ${gan(sug)}.
       ${its.length > 1 && !iguales ? '<br><b style="color:var(--red)">⚠ Hoy tienen precios distintos: el cliente lo va a notar.</b>' : `<br>Precio actual ${clp(actual)} → ${gan(actual)}.`}
       ${iguales && actual >= sug ? ' <b style="color:var(--green)">✓ Su precio cubre la meta.</b>' : ''}${rango}
-      <div class="row" style="gap:6px;margin-top:6px">${actual !== sug || !iguales ? `<button class="sm" data-pu="${ix.join(',')}" data-pv="${sug}">Aplicar mínimo ${clp(sug)}</button>` : ''}${reco !== sug && (actual !== reco || !iguales) ? `<button class="sm pri" data-pu="${ix.join(',')}" data-pv="${reco}">Aplicar recomendado ${clp(reco)}</button>` : ''}</div></div>`;
+      <div class="row" style="gap:6px;margin-top:6px"><label class="row small" style="margin:0;gap:4px">Precio: <select data-pmodo="${ix.join(',')}" style="width:auto;padding:3px 6px"><option value="">manual (lo escribo yo)</option><option value="min" ${modo === 'min' ? 'selected' : ''}>automático = mínimo</option><option value="reco" ${modo === 'reco' ? 'selected' : ''}>automático = recomendado</option></select></label>${modo ? '<span class="small" style="color:var(--green)">🔄 Se ajusta solo cuando cambian los costos</span>' : ''}${modo ? '' : (actual !== sug || !iguales ? `<button class="sm" data-pu="${ix.join(',')}" data-pv="${sug}">Aplicar mínimo ${clp(sug)}</button>` : '') + (reco !== sug && (actual !== reco || !iguales) ? `<button class="sm pri" data-pu="${ix.join(',')}" data-pv="${reco}">Aplicar recomendado ${clp(reco)}</button>` : '')}</div></div>`;
   }).join('');
   if (!html) return '';
-  return `${html}<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por ${'hora'} en cada equipo ($):</span><input id="metaG" inputmode="numeric" value="${meta || ''}" placeholder="vacío = usa la utilidad %" style="width:180px"><span class="muted">Se guarda para las próximas cotizaciones.</span></div>`;
+  return `${html}<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por hora en cada equipo ($):</span><input id="metaG" inputmode="numeric" value="${meta || ''}" placeholder="vacío = usa la utilidad %" style="width:180px">
+    ${META_SUG ? `<span>💡 Meta sugerida: <b>${clp(META_SUG.v)}/h</b> <span class="muted">(${META_SUG.why})</span></span>${META_SUG.v !== meta ? `<button class="sm" id="metaUse" data-v="${META_SUG.v}">Usar ${clp(META_SUG.v)}</button>` : ''}` : ''}<span class="muted">Se guarda para las próximas cotizaciones.</span></div>`;
 }
 function bindPrecioUnico() {
+  if (PU_PEND.length) { const pend = PU_PEND; PU_PEND = []; pend.forEach(({ix, v}) => ix.forEach(i => { COT.items[i].precio = v; })); renderItems(); toast('Precio automático actualizado · recuerde Guardar'); return; }
+  document.querySelectorAll('[data-pmodo]').forEach(sel => sel.onchange = () => { sel.dataset.pmodo.split(',').forEach(i => { if (sel.value) COT.items[+i].pauto = sel.value; else delete COT.items[+i].pauto; }); renderItems(); });
   document.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const v = +b.dataset.pv; b.dataset.pu.split(',').forEach(i => { COT.items[+i].precio = v; }); renderItems(); toast(`Precio ${clp(v)} aplicado · recuerde Guardar`); });
+  if ($('metaUse')) $('metaUse').onclick = () => { $('metaG').value = $('metaUse').dataset.v; $('metaG').onchange(); };
   const m = $('metaG'); if (m) m.onchange = async () => { const v = num(m.value) || 0, now = new Date().toISOString();
     try { await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([{clave: 'meta_ganancia_hora', valor: v, descripcion: 'Meta de ganancia por hora (o unidad) en cada equipo, para el precio único', actualizado: now}])});
       const pp = D.parametros.find(x => x.clave === 'meta_ganancia_hora'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); else D.parametros.push({clave: 'meta_ganancia_hora', valor: v}); D.P.meta_ganancia_hora = v; updTot(); } catch (e) { alert(e.message); } };
@@ -1771,6 +1788,8 @@ function chequeoEnvio(c, S, minera) {
     else if (+i.precio && +i.precio < +i.costo && !i.oculto) add('red', `<b>${esc(i.item)}</b>: el precio (${clp(i.precio)}) es <b>menor que el costo</b> (${clp(i.costo)}).`);
     if (i.costo_uf) add('info', `<b>${esc(i.item)}</b>: subarrendado a ${esc(i.proveedor || 'proveedor')} a ${nf(i.costo_uf, 2)} UF. Confirme el valor con el proveedor.`); });
   const porTipo = {}; vis.filter(i => i.equipo_tipo_id).forEach(i => { (porTipo[i.equipo_tipo_id + i.unidad] = porTipo[i.equipo_tipo_id + i.unidad] || new Set()).add(+i.precio); });
+  precioUnicoHTML(c); const bajos = []; gruposEquipos(c).forEach(ix => { const its = ix.map(i => c.items[i]), maxC = Math.max(...its.map(x => +x.costo)), meta = P('meta_ganancia_hora', 0), sug = meta ? redUp(maxC + meta) : redUp(maxC * (1 + +(c.gg ?? 0)) * (1 + +(c.utilidad ?? 0.2))); its.forEach(x => { if (+x.precio < sug) bajos.push(`${esc(x.item)} (${clp(x.precio)} < ${clp(sug)})`); }); });
+  if (bajos.length) add('red', `Precio <b>bajo el mínimo</b> para su meta de ganancia: ${bajos.join(', ')}. Corríjalo en la cotización (recuadro 🚜).`);
   if (Object.values(porTipo).some(st => st.size > 1)) add('orange', 'Hay <b>equipos iguales con precios distintos</b>: el cliente lo va a notar.');
   if (S.op && !S.cam) add('orange', 'No hay <b>camioneta / vehículo</b> en los costos. Si la ponen ustedes, agréguela en el 🧮 de cada equipo (línea libre "Camioneta traslado operadores · día"). No sale como ítem en la oferta.');
   const alc = ((c.doc || {}).txt || {}).alcance; if (alc != null ? /\[lugar de origen\]/.test(alc) : S.cam) add('orange', 'En el alcance falta escribir el <b>lugar de origen</b> del traslado del personal (texto en amarillo, página 3).');
