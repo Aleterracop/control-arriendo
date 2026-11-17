@@ -220,6 +220,7 @@ async function loadAll() {
   TABLES.forEach((t, i) => { D[t] = res[i] || []; });
   try { const [c, a] = await Promise.all([api('cotizaciones?select=*&limit=10000'), api('ajustes?select=*')]); D.cotizaciones = c || []; D.ajustesMap = {}; (a || []).forEach(x => { D.ajustesMap[x.clave] = x.valor; }); D.sinCot = false; }
   catch (e) { if (e.message === 'SESSION') throw e; D.cotizaciones = []; D.ajustesMap = {}; D.sinCot = true; }
+  try { D.proveedor_equipos = await api('proveedor_equipos?select=*') || []; D.sinProv = false; } catch (e) { if (e.message === 'SESSION') throw e; D.proveedor_equipos = []; D.sinProv = true; }
   D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
   D.hasConteo = D.arriendos.some(a => 'conteo_dias' in a);
   D.hasEstado = D.horometros.some(h => 'estado' in h);
@@ -895,6 +896,7 @@ const CAT = {
   equipo_tipos: {t: 'Equipos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['tarifa', 'Tarifa $', 'n'], ['consumo_lh', 'Diésel l/h', 'n'], ['balde_m3', 'Balde m³', 'n'], ['notas', 'Notas', 't']]},
   personal: {t: 'Personal', cols: [['cargo', 'Cargo', 't'], ['sueldo', 'Sueldo líquido $', 'n'], ['valor_hh', 'Valor HH $', 'n'], ['notas', 'Notas', 't']]},
   materiales: {t: 'Materiales, servicios e insumos', cols: [['nombre', 'Nombre', 't'], ['unidad', 'Unidad', 't'], ['precio', 'Precio $', 'n'], ['notas', 'Notas', 't']]},
+  proveedor_equipos: {t: 'Equipos de proveedores (UF)', cols: [['proveedor', 'Proveedor', 't'], ['equipo', 'Equipo', 't'], ['unidad', 'Unidad', 't'], ['costo_uf', 'Costo UF', 'n'], ['_clp', '$ con UF de la app', 'calc'], ['costo_clp', 'o costo en $', 'n'], ['notas', 'Notas', 't']]},
   parametros: {t: 'Parámetros', cols: [['clave', 'Clave', 'r'], ['descripcion', 'Descripción', 'r'], ['valor', 'Valor', 'n']]}
 };
 function vCatalogo() {
@@ -904,12 +906,13 @@ function vCatalogo() {
     document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); });
     if (!D.sinCot) bindEmpresa(); return;
   }
+  if (tabC === 'proveedor_equipos' && D.sinProv) { $('view').innerHTML = tabsH + '<div class="msg err">Ejecute <b>sql/11_equipos_proveedores.sql</b> en Supabase para habilitar el catálogo de equipos de proveedores.</div>'; document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); }); return; }
   const C = CAT[tabC];
-  const rows = D[tabC].slice().sort((x, y) => String(x[C.cols[0][0]]).localeCompare(String(y[C.cols[0][0]])));
+  const rows = (D[tabC] || []).slice().sort((x, y) => String(x[C.cols[0][0]]).localeCompare(String(y[C.cols[0][0]])));
   $('view').innerHTML = `${tabsH}
-  <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa vacía = pendiente de precio.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
+  <div class="row" style="margin-bottom:8px"><span class="muted small">Escriba directo en la celda: se guarda al salir de ella.${tabC === 'equipo_tipos' ? ' Tarifa vacía = pendiente de precio.' : ''}${tabC === 'personal' ? ' Valor HH = sueldo × (1 + leyes) ÷ horas/mes, si lo deja vacío se calcula.' : ''}${tabC === 'proveedor_equipos' ? ` Costo neto (sin IVA) que cobra el proveedor, solo equipo. UF de la app: <b>${clp(P('uf', 40000))}</b> (cámbiela en Parámetros).` : ''}</span><span class="sp"></span>${tabC !== 'parametros' ? '<button class="pri sm" id="cAdd">+ Agregar</button>' : ''}</div>
   <div class="card tw"><table><thead><tr>${C.cols.map(c => `<th class="${c[2] === 'n' ? 'n' : ''}">${c[1]}</th>`).join('')}${tabC === 'equipo_tipos' ? '<th>Actualizado</th>' : ''}${tabC !== 'parametros' ? '<th></th>' : ''}</tr></thead><tbody>
-  ${rows.map(r => `<tr>${C.cols.map(c => c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
+  ${rows.map(r => `<tr>${C.cols.map(c => c[2] === 'calc' ? `<td class="n"><b>${r.costo_uf ? clp(r.costo_uf * P('uf', 40000)) : r.costo_clp ? clp(r.costo_clp) : '—'}</b></td>` : c[2] === 'r' ? `<td class="small">${esc(r[c[0]])}</td>` : `<td class="${c[2] === 'n' ? 'n' : ''}"><input data-id="${r.id || r.clave}" data-k="${c[0]}" data-n="${c[2] === 'n' ? 1 : 0}" value="${esc(r[c[0]] ?? '')}" ${c[2] === 'n' ? 'inputmode="decimal" style="text-align:right;min-width:90px"' : 'style="min-width:120px"'}></td>`).join('')}
   ${tabC === 'equipo_tipos' ? `<td class="small">${r.tarifa == null ? '<span class="chip c-amber">Sin precio</span>' : fd(r.tarifa_fecha) || ''}</td>` : ''}${tabC !== 'parametros' ? `<td><button class="sm dan" data-del="${r.id}">✕</button></td>` : ''}</tr>`).join('')}
   </tbody></table></div>`;
   document.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { tabC = b.dataset.c; vCatalogo(); });
@@ -919,10 +922,11 @@ function vCatalogo() {
       if (tabC === 'parametros') { await api(`parametros?clave=eq.${encodeURIComponent(inp.dataset.id)}`, {method: 'PATCH', body: JSON.stringify({valor: v, actualizado: new Date().toISOString()})}); }
       else {
         if (tabC === 'equipo_tipos' && k === 'tarifa') o.tarifa_fecha = todayISO();
+        if (tabC === 'proveedor_equipos' && /costo/.test(k)) o.actualizado = todayISO();
         if (tabC === 'personal' && k === 'sueldo' && v) { const r = byId('personal', inp.dataset.id); if (r && !r.valor_hh_manual) o.valor_hh = Math.round(v * (1 + P('leyes', 0.42)) / P('horas_mes', 180)); }
         await upd(tabC, inp.dataset.id, o);
       }
-      await loadAll(); toast('Guardado'); if (tabC !== 'parametros' && (k === 'tarifa' || k === 'sueldo')) vCatalogo();
+      await loadAll(); toast('Guardado'); if (tabC !== 'parametros' && (k === 'tarifa' || k === 'sueldo' || /costo/.test(k))) vCatalogo();
     } catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
   });
   document.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { if (confirm('¿Eliminar este ítem del catálogo?')) guardar(() => del(tabC, b.dataset.del), 'Eliminado'); });
@@ -1118,7 +1122,7 @@ function renderItems() {
   document.querySelectorAll('#tIt .int').forEach(e => e.hidden = !verInternos);
   tb.innerHTML = c.items.map((it, i) => it.tipo === 'g'
     ? `<tr style="background:var(--pale)"><td><input data-i="${i}" data-k="item" value="${esc(it.item)}" style="font-weight:700"></td><td colspan="${verInternos ? 7 : 5}"><div class="row" style="flex-wrap:nowrap"><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" style="font-weight:700"><button class="sm pri" data-addg="${i}" style="white-space:nowrap">+ ítem en ${esc(it.item)}</button></div></td><td class="n">${btnsItem(i)}</td></tr>`
-    : `<tr${it.oculto ? ' style="opacity:.7;background:repeating-linear-gradient(45deg,#fff,#fff 8px,#f3f6f9 8px,#f3f6f9 16px)" title="Costo interno: no aparece en la oferta"' : ''}><td><input data-i="${i}" data-k="item" value="${esc(it.item)}">${it.oculto ? '<div class="chip" style="margin-top:2px">interno</div>' : ''}</td><td><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" placeholder="Escriba o elija del catálogo" list="catList"></td><td><input data-i="${i}" data-k="unidad" value="${esc(it.unidad || '')}"></td>
+    : `<tr${it.oculto ? ' style="opacity:.7;background:repeating-linear-gradient(45deg,#fff,#fff 8px,#f3f6f9 8px,#f3f6f9 16px)" title="Costo interno: no aparece en la oferta"' : ''}><td><input data-i="${i}" data-k="item" value="${esc(it.item)}">${it.oculto ? '<div class="chip" style="margin-top:2px">interno</div>' : ''}</td><td><input data-i="${i}" data-k="desc" value="${esc(it.desc)}" placeholder="Escriba o elija del catálogo" list="catList">${it.proveedor ? `<div class="chip c-orange" style="margin-top:2px" title="Solo interno: no aparece en la oferta">Subarrendado · ${esc(it.proveedor)}${it.costo_uf ? ' · ' + nf(it.costo_uf, 2) + ' UF' : ''}</div>` : ''}</td><td><input data-i="${i}" data-k="unidad" value="${esc(it.unidad || '')}"></td>
       <td class="n"><input data-i="${i}" data-k="cantidad" data-n="1" inputmode="decimal" value="${it.cantidad ?? ''}" style="text-align:right"></td>
       <td class="n"><input data-i="${i}" data-k="precio" data-n="1" inputmode="numeric" value="${it.precio ?? ''}" style="text-align:right" placeholder="$"></td>
       <td class="n"><b data-tot="${i}"></b></td>
@@ -1257,7 +1261,11 @@ function asistenteEquipo() {
   <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
   <div class="f">
     <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Elegir —')}</select></div>
-    <div><label>Costo equipo ($ por unidad)</label><input id="wTa" inputmode="numeric" placeholder="del catálogo"></div>
+    <div><label>Origen del equipo</label><select id="wOr"><option value="propio">Propio Terracop</option><option value="sub">Subarrendado a proveedor</option></select></div>
+    <div id="wPeW" hidden><label>Equipo del proveedor (catálogo)</label><select id="wPe"><option value="">— Escribir a mano —</option></select></div>
+    <div id="wProvW" hidden><label>Proveedor</label><input id="wProv" placeholder="Ej. Rental, Finning…"></div>
+    <div id="wUfW" hidden><label>Valor UF de hoy ($)</label><input id="wUfv" inputmode="decimal" value="${P('uf', 40000)}"></div>
+    <div><label>Costo equipo por unidad</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input id="wTa" inputmode="decimal" placeholder="del catálogo"><select id="wMon" style="width:auto"><option value="$">$</option><option value="UF">UF</option></select></div></div>
     <div><label>Cobro por</label><select id="wU"><option value="hm">Hora máquina (hm)</option><option value="día">Día</option><option value="mes">Mes</option></select></div>
     <div><label id="wQl">Cantidad a cotizar (horas)</label><input id="wQ" inputmode="decimal" value="180"></div>
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
@@ -1284,7 +1292,9 @@ function asistenteEquipo() {
     const T = t(), q = num(val('wQ')) || 0, n = num(val('wN')) || 1, u = val('wU'), tar = num(val('wTa')) || 0, o = byId('personal', val('wO')), d = num(val('wD')) ?? diasDef(), ut = (num(val('wUt')) || 0) / 100;
     const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6);
     const rows = [];
-    if (T) rows.push({c: 'Equipo ' + T.nombre, u, q: q * n, p: tar});
+    const enUF = val('wMon') === 'UF', ufv = num(val('wUfv')) || P('uf', 40000), tar$ = enUF ? Math.round(tar * ufv) : tar, sub = val('wOr') === 'sub';
+    $('wConv').innerHTML = (enUF ? `Costo del equipo: ${nf(tar, 2)} UF × ${clp(ufv)} (valor UF) = <b>${clp(tar$)} / ${esc(u)}</b> neto. El IVA del proveedor no es costo (se recupera como crédito fiscal).` : $('wConv').innerHTML);
+    if (T) rows.push({c: (sub ? `Arriendo ${T.nombre} a ${val('wProv') || 'proveedor'}` : 'Equipo ' + T.nombre) + (enUF ? ` (${nf(tar, 2)} UF)` : ''), u, q: q * n, p: tar$});
     // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
     const rot = val('wTu') !== '5x2' && (u === 'mes' || hrs >= P('horas_mes', 180)) ? 2 : 1;
     if (o) rows.push({c: o.cargo + (rot === 2 ? ` × 2 (turno ${val('wTu')}, 2 operadores en rotación, mes completo c/u)` : ''), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
@@ -1339,17 +1349,34 @@ function asistenteEquipo() {
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
   ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
   $('wU').onchange = () => { unidad(); $('wD').placeholder = diasDef(); calc(); };
+  const fillPe = () => { const T = t(), pal = T ? normTxt(T.nombre).split(/\s+/).filter(w => w.length > 2 || /\d/.test(w)).slice(0, 2) : [];
+    const L = (D.proveedor_equipos || []).slice().sort((a, b) => { const m = x => (T && (x.tipo_id === T.id || pal.every(w => normTxt(x.equipo).includes(w)))) ? 0 : 1; return m(a) - m(b) || (a.proveedor || '').localeCompare(b.proveedor || ''); });
+    $('wPe').innerHTML = '<option value="">— Escribir a mano —</option>' + L.map(x => `<option value="${x.id}">${esc(x.proveedor)} · ${esc(x.equipo || '')} · ${x.costo_uf ? nf(x.costo_uf, 2) + ' UF' : clp(x.costo_clp)} / ${esc(x.unidad || 'hm')}</option>`).join(''); };
+  $('wPe').onchange = () => { const x = (D.proveedor_equipos || []).find(y => y.id === val('wPe')); if (!x) return;
+    $('wProv').value = x.proveedor || ''; if (x.costo_uf) { $('wMon').value = 'UF'; $('wUfW').hidden = false; $('wTa').value = String(x.costo_uf).replace('.', ','); } else { $('wMon').value = '$'; $('wUfW').hidden = true; $('wTa').value = x.costo_clp || ''; }
+    const uu = /mes/.test(x.unidad || '') ? 'mes' : /d[ií]a/.test(x.unidad || '') ? 'día' : 'hm'; if (val('wU') !== uu) { $('wU').value = uu; $('wQl').textContent = `Cantidad a cotizar (${({hm: 'horas', 'día': 'días', mes: 'meses'})[uu]})`; }
+    calc(); };
+  $('wOr').onchange = () => { const sub = val('wOr') === 'sub'; $('wProvW').hidden = !sub; $('wPeW').hidden = !sub; if (sub) fillPe(); if (sub) { $('wTa').value = ''; $('wTa').placeholder = 'costo del proveedor'; } else if (tarCat) { $('wMon').value = '$'; unidad(); } calc(); };
+  $('wMon').onchange = () => { const uf = val('wMon') === 'UF'; $('wUfW').hidden = !uf; if (uf) { $('wTa').value = ''; $('wTa').placeholder = 'ej. 0,98'; } else { $('wConv').innerHTML = ''; } calc(); };
+  $('wUfv').oninput = calc;
+  $('wProv').oninput = calc;
   $('wQ').oninput = () => { qTocada = true; desc(); $('wD').placeholder = diasDef(); calc(); };
   $('wCan').onclick = closeModal;
   $('wOk').onclick = async () => {
     const T = t(); if (!T) return alert('Elija el tipo de equipo.');
-    if (!num(val('wTa'))) return alert('Escriba el costo del equipo.');
-    if (!T.tarifa && val('wU') === (T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm') && confirm(`¿Guardar ${clp(num(val('wTa')))} como tarifa de "${T.nombre}" en el catálogo?`)) { try { await upd('equipo_tipos', T.id, {tarifa: num(val('wTa')), tarifa_fecha: todayISO()}); T.tarifa = num(val('wTa')); } catch (e) { alert(e.message); } }
+    if (val('wMon') === 'UF' && num(val('wUfv')) && num(val('wUfv')) !== P('uf', 40000) && confirm(`¿Guardar ${clp(num(val('wUfv')))} como valor UF de la app (Parámetros), para las próximas cotizaciones?`)) {
+      try { const v = num(val('wUfv')), now = new Date().toISOString(); await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([{clave: 'uf', valor: v, descripcion: 'Valor UF', actualizado: now}])});
+        const pp = D.parametros.find(x => x.clave === 'uf'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); D.P.uf = v; toast('Valor UF guardado'); } catch (e) { alert(e.message); } }
+    if (!num(val('wTa'))) return alert(val('wOr') === 'sub' ? 'Escriba el costo del proveedor (en $ o en UF).' : 'Escriba el costo del equipo.');
+    if (!T.tarifa && val('wOr') !== 'sub' && val('wMon') !== 'UF' && val('wU') === (T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm') && confirm(`¿Guardar ${clp(num(val('wTa')))} como tarifa de "${T.nombre}" en el catálogo?`)) { try { await upd('equipo_tipos', T.id, {tarifa: num(val('wTa')), tarifa_fecha: todayISO()}); T.tarifa = num(val('wTa')); } catch (e) { alert(e.message); } }
     calc();
     const c = COT, gA = c.items.find(i => i.tipo === 'g') ? c.items.filter(i => i.tipo === 'g')[0].item : (c.items.unshift({tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}), 'A');
     let pos = c.items.findIndex(i => i.tipo === 'g' && i.item === gA) + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
     const n = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(gA + '.')).length;
-    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id});
+    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id,
+      ...(val('wOr') === 'sub' ? {proveedor: val('wProv') || 'proveedor', costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null} : {})});
+    if (val('wOr') === 'sub' && !val('wPe') && !D.sinProv && confirm(`¿Guardar "${val('wProv') || 'proveedor'} · ${T.nombre} · ${val('wTa')} ${val('wMon')} / ${val('wU')}" en el catálogo de equipos de proveedores?`)) {
+      try { const r = await ins('proveedor_equipos', {proveedor: val('wProv') || 'proveedor', equipo: T.nombre, tipo_id: T.id, unidad: val('wU'), costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null, costo_clp: val('wMon') === '$' ? num(val('wTa')) : null}); D.proveedor_equipos.push(r); } catch (e) { alert(e.message); } }
     const mv = num(val('wMv'));
     if (mv) {
       let g = c.items.find(i => i.tipo === 'g' && /moviliz/i.test(i.desc));

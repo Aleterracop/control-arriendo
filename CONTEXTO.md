@@ -17,6 +17,7 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 8. `sql/08_ajuste_horometros.sql`: ajuste HYPS-60 según reportes (10-09 = 7321, report 09-11, corte EDP 2 al 17-10).
 9. `sql/09_flota_planilla.sql`: flota con año, patente, modelo, propiedad (propio/leasing/arriendo) y tarifas de lista sin/con operador.
 10. `sql/10_costos_provisorios_y_1221.sql`: costo provisorio del catálogo = lista sin operador ÷ 1,2; HYPS-60 = cotización 1221.
+11. `sql/11_equipos_proveedores.sql`: catálogo de equipos de proveedores (Rental, etc.) con costo en UF o $.
 6. `sql/06_resumen_gerencial.sql`: función security definer `resumen_gerencial()` que alimenta el panel gerencial en vivo.
 
 ## Funciones de app.html
@@ -48,6 +49,8 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
 - **Mandantes**: `requiere_hes` (mineras sí; particulares no, se registra la aprobación).
 
 ## Reglas de negocio acordadas
+- Equipos subarrendados (Rental, etc.): el proveedor cobra en UF + IVA (IVA recuperable, el costo es neto), solo equipo. Terracop agrega operador (2 en 14x14), alimentación, alojamiento y combustible si corresponde. La oferta al cliente va siempre en PESOS. En el asistente: Origen = Subarrendado, costo en UF con valor UF editable; el ítem queda marcado "Subarrendado · proveedor" (solo interno).
+- Cotizaciones con la palabra "prueba" (referencia, notas o cliente) quedan moradas, no cuentan en totales ni en el panel gerencial, y la oferta lleva sello "PRUEBA – NO ENVIAR".
 - Tarifas de lista (planilla 16-11): "tarifa máquina" = precio sin operador; "con operador" = precio con operación continua turno día (2 operadores en rotación, mes completo c/u). Siempre conviene más con operador.
 - Patente confirmada: HSZC-48 (EXC-206). HYPS-60 = EXC-209, cotización 1221.
 - Costos del catálogo son PROVISORIOS (lista sin operador ÷ 1,2; martillo 2.875.000) hasta tener costos reales del taller (mantención, desgaste, seguro, reposición; leasing: cuota mensual). Todo precio y costo debe poder editarse a mano.
