@@ -1883,8 +1883,9 @@ async function docCompleto(id, fresco) {
   $('cpSave').onclick = () => guardarDoc(false);
   $('cpTpl').onclick = async () => {
     const nom = minera ? 'Minera / empresa' : 'Particular', k = minera ? 'plantilla_minera' : 'plantilla_particular';
-    const bloques = {}; document.querySelectorAll('#cpDoc .cpx').forEach(el => { if (['alcance', 'exclusiones', 'consideraciones', 'carta', 'oferta_intro'].includes(el.dataset.k)) bloques[el.dataset.k] = el.innerHTML; });
-    if (!confirm(`¿Guardar los textos de esta oferta como base de la plantilla "${nom}"?\n\nLas próximas cotizaciones con esa plantilla partirán con: carta, alcance, exclusiones y condiciones tal como están aquí. Los datos subrayados (cliente, días, horas, faena) se siguen llenando solos; lo que usted escribió a mano (por ejemplo un lugar o un plazo) quedará igual, revíselo en cada cotización.\n\nEsta cotización no cambia.`)) return;
+    const generaliza = html => html.split(/(<span data-v="[^"]*"[^>]*>[^<]*<\/span>)/).map(part => /^<span data-v=/.test(part) ? part : [['faena', vals.faena], ['cliente', vals.cliente], ['contacto', vals.contacto], ['cargo', vals.cargo]].reduce((h, [k, v]) => v && v.length > 3 ? h.split(v).join(`<span data-v="${k}" contenteditable="false"></span>`) : h, part)).join('');
+    const bloques = {}; document.querySelectorAll('#cpDoc .cpx').forEach(el => { if (['alcance', 'exclusiones', 'consideraciones', 'carta', 'oferta_intro'].includes(el.dataset.k)) bloques[el.dataset.k] = generaliza(el.innerHTML); });
+    if (!confirm(`¿Guardar los textos de esta oferta como base de la plantilla "${nom}"?\n\nLas próximas cotizaciones con esa plantilla partirán con: carta, alcance, exclusiones y condiciones tal como están aquí. El nombre del cliente y la faena de esta cotización se reemplazan por datos automáticos (en la próxima saldrán los de esa cotización). Otros lugares o plazos que escribió a mano quedan igual: revíselos en cada cotización.\n\nEsta cotización no cambia.`)) return;
     await setAjuste(k, JSON.stringify(bloques)); toast(`Plantilla "${nom}" actualizada`);
   };
   document.querySelectorAll('[data-fmt]').forEach(bt => { bt.onmousedown = e => e.preventDefault(); bt.onclick = () => {
