@@ -1071,12 +1071,14 @@ function nuevaCot() {
   <div><label>N° cotización</label><input id="ncN" inputmode="numeric" value="${nextNumero()}"></div>
   <div><label>Validez (días)</label><input id="ncV" inputmode="numeric" value="10"></div></div>
   <div style="margin-top:10px"><label>Referencia (nombre del servicio)</label><input id="ncR" placeholder="Ej. Servicio de arriendo de excavadora"></div>
+  <div style="margin-top:10px"><label>Formato de la oferta completa</label><select id="ncTp"><option value="particular">Particular · oferta simple (cliente no minero)</option><option value="minera">Estándar minero · completa (faena, cordillera, mineras)</option></select>
+    <div class="small muted" style="margin-top:4px">Se elige solo según el mandante (si emite HES = minero), pero puede cambiarlo aquí o después en la oferta completa.</div></div>
   <div class="mf"><button id="ncCan">Cancelar</button><button class="pri" id="ncOk">Crear</button></div>`);
   $('ncM').onchange = async () => {
-    if ($('ncM').value !== '__nuevo') { const m = byId('mandantes', $('ncM').value); if (m) $('ncV').value = m.requiere_hes ? 10 : 5; return; }
+    if ($('ncM').value !== '__nuevo') { const m = byId('mandantes', $('ncM').value); if (m) { $('ncV').value = m.requiere_hes ? 10 : 5; $('ncTp').value = m.requiere_hes ? 'minera' : 'particular'; } return; }
     const nombre = (prompt('Nombre del mandante nuevo:') || '').trim(); if (!nombre) { $('ncM').value = ''; return; }
     const hes = confirm(`¿"${nombre}" emite HES?\n\nAceptar = Sí (minera / empresa)\nCancelar = No (particular)`);
-    try { const m = await ins('mandantes', {nombre, requiere_hes: hes}); D.mandantes.push(m); const o = document.createElement('option'); o.value = m.id; o.textContent = m.nombre; $('ncM').insertBefore(o, $('ncM').lastElementChild); $('ncM').value = m.id; $('ncV').value = hes ? 10 : 5; }
+    try { const m = await ins('mandantes', {nombre, requiere_hes: hes}); D.mandantes.push(m); const o = document.createElement('option'); o.value = m.id; o.textContent = m.nombre; $('ncM').insertBefore(o, $('ncM').lastElementChild); $('ncM').value = m.id; $('ncV').value = hes ? 10 : 5; $('ncTp').value = hes ? 'minera' : 'particular'; }
     catch (e) { alert(e.message); $('ncM').value = ''; }
   };
   $('ncCan').onclick = closeModal;
@@ -1087,6 +1089,7 @@ function nuevaCot() {
     const o = {numero: n, rev: 0, fecha: todayISO(), mandante_id: m ? m.id : null, cliente: m ? m.nombre : null, referencia: val('ncR') || 'Servicio de arriendo de equipo', validez_dias: v, nota: NOTA_DEF(v),
       items: [{tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}, {tipo: 'g', item: 'B', desc: 'Movilización y desmovilización del equipo'}], gg: P('gg', 0), utilidad: P('utilidad', 0.2), estado: 'borrador'};
     if (D.hasDoc && m) Object.assign(o, ultimosDatosMandante(m.id));
+    if (D.hasDoc) o.doc = {plantilla: val('ncTp') || 'particular'};
     guardar(async () => { const r = await ins('cotizaciones', o); location.hash = 'c-' + r.id; }, 'Cotización creada');
   };
 }
