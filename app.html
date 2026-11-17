@@ -123,6 +123,28 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 @media (max-width:700px){#calc{bottom:70px;right:8px;left:8px;max-width:none}}
 @media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
+.cpwrap{overflow-x:auto;padding:4px 0 20px}
+.cp{font-family:Calibri,Arial,sans-serif;color:#1b2430;font-size:14.5px;line-height:1.35}
+.cp .pg{width:216mm;min-height:279mm;box-sizing:border-box;padding:10mm 16mm;margin:0 auto 16px;background:#fff;box-shadow:var(--sh);border:1px solid var(--line);display:flex;flex-direction:column;page:cp}
+.cp .pgb{flex:1;padding-top:8mm}
+.cp p{margin:0 0 9px}
+.cp ol,.cp ul{margin:0 0 9px;padding-left:26px}.cp li{margin:0 0 6px;text-align:justify}.cp li li{margin-bottom:3px}
+.cp .cpx p,.cp .cpx li{text-align:justify}.cp .cpx p:first-child:has(br){text-align:left}
+.cph{width:calc(100% - 2px);border-collapse:collapse;font-size:12px}.cph td{border:1px solid #9fb3c8;padding:4px 7px;vertical-align:middle}
+.cph .cpl{width:23%;text-align:center}.cph .cpl img{height:40px}.cph .cpt{text-align:center;font-weight:700;font-size:14px}.cph .cpr{width:30%}.cph .cpr p{margin:1px 0}
+.cpf{text-align:right;font-size:12px;margin:10px 0 0!important}
+.cps{font-size:14.5px;font-weight:700;margin:4px 0 10px;color:#1b2430;text-decoration:underline;text-underline-offset:3px}
+.cpport{text-align:center;padding:40mm 0 30mm}.cpcli{font-size:20px;font-weight:700;margin-bottom:28mm!important}.cpcot{font-size:20px;font-weight:700}.cpcot2{font-size:17px;font-weight:700}
+.cprev{width:100%;border-collapse:collapse;font-size:12.5px;text-align:center}.cprev th{background:#1f3864;color:#fff;padding:5px;border:1px solid #9fb3c8}.cprev td{border:1px solid #9fb3c8;padding:6px;height:52px}
+.cpfirma{text-align:right;margin-top:26px}.cpfirma img{height:76px;display:block;margin:0 0 -2px auto}.cpfirma p{margin:0!important;text-align:right}
+.cptab{margin:6px 0 12px}
+.cptest{border:3px solid #c62828;color:#c62828;font-weight:700;font-size:18px;text-align:center;padding:4px;margin-top:8px;letter-spacing:2px}
+.cpx{outline:none;border-radius:6px}.cpx:hover{box-shadow:0 0 0 2px #e3eef9}.cpx:focus{box-shadow:0 0 0 2px #9cc3ea;background:#fbfdff}
+.cp [data-v]{border-bottom:2px dotted #3d7fd1}.cp .cpfal{background:#fff3b8;border-bottom-color:#e6a821}
+.cpreset{float:right;margin:-4px 0 4px 8px}
+.cpchk{margin:0;padding-left:4px;list-style:none;font-size:13px}.cpchk li{padding:3px 0;border-bottom:1px dashed var(--line)}.cpchk li.red{color:#b3261e}.cpchk li.orange{color:#9a5b00}
+@page cp{size:letter;margin:10mm 14mm}
+@media print{.cpwrap{overflow:visible;padding:0}.cp .pg{width:auto;min-height:258mm;margin:0;padding:0;border:none;box-shadow:none;break-after:page}.cp .pg:last-child{break-after:auto}.cp [data-v]{border-bottom:none}.cp .cpfal{background:none}.cpx:hover,.cpx:focus{box-shadow:none;background:none}body.printcp main{max-width:none}}
 .ofwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:6px}
 a.btn{display:inline-block}
 </style>
@@ -226,6 +248,7 @@ async function loadAll() {
   D.hasEstado = D.horometros.some(h => 'estado' in h);
   D.hasFallas = D.arriendos.some(a => 'descuenta_fallas' in a);
   D.hasPropiedad = D.flota.some(f => 'propiedad' in f);
+  D.hasDoc = D.cotizaciones.some(c => 'doc' in c);
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -348,11 +371,12 @@ function alertas() {
 /* ---------------- Navegación ---------------- */
 function go() {
   const h = (location.hash || '#inicio').slice(1);
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^cd?-/.test(h) && a.dataset.v === 'cotizar')));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^c[dp]?-/.test(h) && a.dataset.v === 'cotizar')));
   const v = $('view');
   try {
     if (h.startsWith('a-')) return vArriendo(h.slice(2));
     if (h.startsWith('cd-')) return docCot(h.slice(3));
+    if (h.startsWith('cp-')) return docCompleto(h.slice(3));
     if (h.startsWith('c-')) return vCot(h.slice(2));
     ({inicio: vInicio, cotizar: vCotizaciones, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
@@ -720,7 +744,7 @@ function zipStore(files, type) {
   const parts = [], cen = []; let off = 0;
   const u16 = v => [v & 255, (v >>> 8) & 255], u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
   Object.entries(files).forEach(([name, txt]) => {
-    const nb = enc.encode(name), db = enc.encode(txt), cr = crc(db);
+    const nb = enc.encode(name), db = txt instanceof Uint8Array ? txt : enc.encode(txt), cr = crc(db);
     const lh = new Uint8Array([...u32(0x04034b50), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(cr), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0)]);
     parts.push(lh, nb, db);
     cen.push(new Uint8Array([...u32(0x02014b50), ...u16(20), ...u16(20), ...u16(0x0800), ...u16(0), ...u16(0), ...u16(0x21), ...u32(cr), ...u32(db.length), ...u32(db.length), ...u16(nb.length), ...u16(0), ...u16(0), ...u16(0), ...u16(0), ...u32(0), ...u32(off)]), nb);
@@ -1035,6 +1059,7 @@ function nuevaCot() {
     const m = byId('mandantes', val('ncM')), v = num(val('ncV')) || 10;
     const o = {numero: n, rev: 0, fecha: todayISO(), mandante_id: m ? m.id : null, cliente: m ? m.nombre : null, referencia: val('ncR') || 'Servicio de arriendo de equipo', validez_dias: v, nota: NOTA_DEF(v),
       items: [{tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}, {tipo: 'g', item: 'B', desc: 'Movilización y desmovilización del equipo'}], gg: P('gg', 0), utilidad: P('utilidad', 0.2), estado: 'borrador'};
+    if (D.hasDoc && m) Object.assign(o, ultimosDatosMandante(m.id));
     guardar(async () => { const r = await ins('cotizaciones', o); location.hash = 'c-' + r.id; }, 'Cotización creada');
   };
 }
@@ -1053,7 +1078,7 @@ function vCot(id) {
     <label class="row small" style="margin:0;cursor:pointer;gap:6px"><input type="checkbox" id="vInt" style="width:auto" ${verInternos ? 'checked' : ''}> Ver costos y utilidad</label></div>
   <div class="card">
     <div class="row"><h2 style="margin:0">Cotización N° ${esc(nCot(c))}</h2>${estCot(c.estado)}<span class="sp"></span>
-      <button class="sm" id="cDoc">📄 Oferta para el cliente</button><button class="sm pri" id="cSave">💾 Guardar</button></div>
+      <button class="sm" id="cDoc">📄 Oferta para el cliente</button><button class="sm" id="cFull">📑 Oferta completa</button><button class="sm pri" id="cSave">💾 Guardar</button></div>
     <div class="f" style="margin-top:12px">
       <div><label>N°</label><input id="cN" inputmode="numeric" value="${c.numero}"></div>
       <div><label>Revisión</label><input id="cR" inputmode="numeric" value="${c.rev}"></div>
@@ -1063,6 +1088,11 @@ function vCot(id) {
       <div><label>Validez (días)</label><input id="cV" inputmode="numeric" value="${c.validez_dias ?? ''}"></div>
     </div>
     <div style="margin-top:10px"><label>Referencia (nombre del servicio, sale en la oferta)</label><input id="cRef" value="${esc(c.referencia || '')}"></div>
+    <div class="f" style="margin-top:10px">
+      <div><label>Faena / lugar de trabajo</label><input id="cFa" value="${esc(c.faena || '')}" placeholder="Ej. Faena Fenix Gold, Diego de Almagro"></div>
+      <div><label>Contacto (a quién va la carta)</label><input id="cCo" value="${esc(c.atencion || '')}" placeholder="Ej. Leonardo Figueroa"></div>
+      <div><label>Cargo del contacto</label><input id="cCc" value="${esc(c.atencion_cargo || '')}" placeholder="Ej. Superintendente de Proyectos"></div>
+    </div>${D.hasDoc ? '' : '<div class="small" style="color:var(--red);margin-top:6px">Para guardar la faena ejecute <b>sql/12_oferta_completa.sql</b> en Supabase.</div>'}
   </div>
 
   <div class="card">
@@ -1084,13 +1114,14 @@ function vCot(id) {
     <button class="dan sm" id="cDel">Eliminar</button><button class="sm" id="cRev">Nueva revisión</button><button class="sm" id="cDup">Duplicar como nueva</button>
     <span class="sp"></span>
     ${c.arriendo_id ? `<a class="btn sm" href="#a-${c.arriendo_id}" style="text-decoration:none">🚜 Ver arriendo</a><button class="sm" id="cExt">➕ Crear extensión</button>` : `<button class="sm" id="cArr">✅ Adjudicada: pasar a arriendo o prórroga</button>`}
-    <button class="sm" id="cDoc2">📄 Oferta para el cliente</button><button class="pri sm" id="cSave2">💾 Guardar</button>
+    <button class="sm" id="cDoc2">📄 Oferta para el cliente</button><button class="sm" id="cFull2">📑 Oferta completa (PDF / Word)</button><button class="pri sm" id="cSave2">💾 Guardar</button>
   </div>`;
   renderItems();
   const bind = (id, k, f) => { $(id).oninput = $(id).onchange = () => { c[k] = f ? f($(id).value) : $(id).value; }; };
-  bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas');
+  bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas'); bind('cFa', 'faena'); bind('cCo', 'atencion'); bind('cCc', 'atencion_cargo');
   $('cV').oninput = () => { const v = num($('cV').value); c.validez_dias = v; if (v && /Validez de la oferta: \d+ días/.test(c.nota || '')) { c.nota = c.nota.replace(/Validez de la oferta: \d+ días/, `Validez de la oferta: ${v} días`); $('tNo').value = c.nota; } };
-  $('cM').onchange = () => { c.mandante_id = $('cM').value || null; const m = byId('mandantes', c.mandante_id); c.cliente = m ? m.nombre : null; };
+  $('cM').onchange = () => { c.mandante_id = $('cM').value || null; const m = byId('mandantes', c.mandante_id); c.cliente = m ? m.nombre : null;
+    const u = ultimosDatosMandante(c.mandante_id, c.id); [['cFa', 'faena'], ['cCo', 'atencion'], ['cCc', 'atencion_cargo']].forEach(([id, k]) => { if (!c[k] && u[k]) { c[k] = u[k]; $(id).value = u[k]; } }); };
   $('cFir').onchange = () => { c.con_firma = $('cFir').checked; };
   $('cIva').onchange = () => { c.mostrar_iva = $('cIva').checked; };
   $('vInt').onchange = () => { verInternos = $('vInt').checked; renderItems(); };
@@ -1098,6 +1129,7 @@ function vCot(id) {
   $('aGr').onclick = () => { const letra = String.fromCharCode(65 + c.items.filter(i => i.tipo === 'g').length); c.items.push({tipo: 'g', item: letra, desc: 'Nuevo grupo'}); renderItems(); };
   $('aEq').onclick = () => asistenteEquipo();
   $('cSave').onclick = $('cSave2').onclick = () => { const src0 = byId('cotizaciones', c.id); if (c.estado === 'enviada' && src0 && src0.estado !== 'enviada' && !c._revisado) revisarIndices(() => saveCot()); else saveCot(); };
+  $('cFull').onclick = $('cFull2').onclick = async () => { if (await saveCot(true)) location.hash = 'cp-' + c.id; };
   $('cDoc').onclick = $('cDoc2').onclick = async () => { const go2 = async () => { if (await saveCot(true)) location.hash = 'cd-' + c.id; }; if (c._revisado) go2(); else revisarIndices(go2); };
   $('cDel').onclick = () => { if (confirm(`¿Eliminar la cotización ${nCot(c)}?`)) guardar(async () => { await del('cotizaciones', c.id); COT = null; location.hash = 'cotizar'; }, 'Cotización eliminada'); };
   $('cRev').onclick = () => copiaCot(c.numero, Math.max(...D.cotizaciones.filter(x => x.numero === c.numero).map(x => x.rev)) + 1);
@@ -1177,7 +1209,7 @@ async function saveCot(silent) {
   const c = COT;
   if (!c.numero) { alert('Falta el N° de cotización.'); return false; }
   if (D.cotizaciones.some(x => x.id !== c.id && x.numero === c.numero && x.rev === c.rev)) { alert(`Ya existe la cotización ${c.numero} rev_${c.rev}.`); return false; }
-  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas']
+  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', ...(D.hasDoc ? ['faena', 'doc'] : [])]
     .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
   o.actualizado = new Date().toISOString();
   if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
@@ -1271,7 +1303,7 @@ function asistenteEquipo() {
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
     <div><label>Horas por día (6 = 180 h ÷ 30 días)</label><input id="wHd" inputmode="decimal" value="${nf(P('horas_dia', P('horas_mes', 180) / 30))}"></div>
     <div><label>Operador</label><select id="wO"><option value="">Sin operador</option>${ops.map(p => `<option value="${p.id}">${esc(p.cargo)} · ${clp(p.valor_hh)}/HH</option>`).join('')}</select></div>
-    <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option></select></div>
+    <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option><option value="libre">Continuo · horario libre (1 operador)</option></select></div>
     <div><label>Días en faena</label><input id="wD" inputmode="numeric"></div>
     <div><label>Alimentación y alojamiento</label><select id="wAl"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
     <div><label>Combustible</label><select id="wCo"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
@@ -1296,7 +1328,7 @@ function asistenteEquipo() {
     $('wConv').innerHTML = (enUF ? `Costo del equipo: ${nf(tar, 2)} UF × ${clp(ufv)} (valor UF) = <b>${clp(tar$)} / ${esc(u)}</b> neto. El IVA del proveedor no es costo (se recupera como crédito fiscal).` : $('wConv').innerHTML);
     if (T) rows.push({c: (sub ? `Arriendo ${T.nombre} a ${val('wProv') || 'proveedor'}` : 'Equipo ' + T.nombre) + (enUF ? ` (${nf(tar, 2)} UF)` : ''), u, q: q * n, p: tar$});
     // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
-    const rot = val('wTu') !== '5x2' && (u === 'mes' || hrs >= P('horas_mes', 180)) ? 2 : 1;
+    const rot = !['5x2', 'libre'].includes(val('wTu')) && (u === 'mes' || hrs >= P('horas_mes', 180)) ? 2 : 1;
     if (o) rows.push({c: o.cargo + (rot === 2 ? ` × 2 (turno ${val('wTu')}, 2 operadores en rotación, mes completo c/u)` : ''), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
     if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
@@ -1319,7 +1351,7 @@ function asistenteEquipo() {
         if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
         if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
     }
-    res = {rows, cu, precio, cant, u};
+    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null}};
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>`;
@@ -1373,7 +1405,7 @@ function asistenteEquipo() {
     const c = COT, gA = c.items.find(i => i.tipo === 'g') ? c.items.filter(i => i.tipo === 'g')[0].item : (c.items.unshift({tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}), 'A');
     let pos = c.items.findIndex(i => i.tipo === 'g' && i.item === gA) + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
     const n = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(gA + '.')).length;
-    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id,
+    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id, meta: res.meta,
       ...(val('wOr') === 'sub' ? {proveedor: val('wProv') || 'proveedor', costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null} : {})});
     if (val('wOr') === 'sub' && !val('wPe') && !D.sinProv && confirm(`¿Guardar "${val('wProv') || 'proveedor'} · ${T.nombre} · ${val('wTa')} ${val('wMon')} / ${val('wU')}" en el catálogo de equipos de proveedores?`)) {
       try { const r = await ins('proveedor_equipos', {proveedor: val('wProv') || 'proveedor', equipo: T.nombre, tipo_id: T.id, unidad: val('wU'), costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null, costo_clp: val('wMon') === '$' ? num(val('wTa')) : null}); D.proveedor_equipos.push(r); } catch (e) { alert(e.message); } }
@@ -1540,6 +1572,274 @@ function ofertaHTML(c, t, logo) {
     ${c.mostrar_iva ? `<tr><td colspan="5" style="${B}text-align:right">IVA ${nf(P('iva', 0.19) * 100)}%</td><td style="${B}text-align:right;white-space:nowrap">${clp(t.iva)}</td></tr>
     <tr><td colspan="5" style="${B}text-align:right;font-weight:700">TOTAL CON IVA</td><td style="${B}text-align:right;font-weight:700;white-space:nowrap">${clp(t.total)}</td></tr>` : ''}
   </table>`;
+}
+
+/* ---------- Oferta completa (formato TEMTPRCO: portada, carta, alcance, exclusiones, oferta) ---------- */
+function ultimosDatosMandante(mid, excluirId) {
+  const out = {}; if (!mid) return out;
+  D.cotizaciones.filter(x => x.mandante_id === mid && x.id !== excluirId).sort((a, b) => (b.fecha || '').localeCompare(a.fecha || '') || b.numero - a.numero)
+    .forEach(x => ['faena', 'atencion', 'atencion_cargo'].forEach(k => { if (!out[k] && x[k]) out[k] = x[k]; }));
+  return out;
+}
+const fCorta = s => s ? s.slice(8, 10) + s.slice(5, 7) + s.slice(0, 4) : '';
+const capi = s => { s = String(s || '').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
+const NUMTXT = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez'];
+function nombreEquipos(nombre, n) {   // "excavadora 320" → "una excavadora 320 o similar" / "dos excavadoras 320 o similar"
+  const w = String(nombre || 'equipo').toLowerCase().trim().split(/\s+/), fem = /a$/.test(w[0]);
+  if (n > 1) w[0] = /[aeiouáéíóú]$/.test(w[0]) ? w[0] + 's' : w[0] + 'es';
+  const cnt = n === 1 ? (fem ? 'una' : 'un') : (NUMTXT[n] || String(n));
+  return `${cnt} ${w.join(' ')} o similar`;
+}
+/* Datos del servicio leídos desde los ítems (con lo que guardó el asistente, o deducidos del APU) */
+function datosServicio(c) {
+  const its = (c.items || []).filter(i => i.tipo === 'i' && !i.oculto), eq = its.filter(i => !/moviliz|flete|traslado/i.test(i.desc || '') && (i.equipo_tipo_id || /arriendo|excavadora|bulldozer|cargador|retro|motoniveladora|rodillo|cami[oó]n/i.test(i.desc || '')));
+  const grupos = {}; let op = false, al = null, co = null, turno = null, dias = 0, horas = null, uDia = null;
+  eq.forEach(it => {
+    const m = it.meta || {}, T = it.equipo_tipo_id ? byId('equipo_tipos', it.equipo_tipo_id) : null, apu = it.apu || [];
+    const nEq = m.equipos || 1, nom = T ? T.nombre : (it.desc || 'equipo').replace(/^arriendo de\s*/i, '').replace(/\s+(o similar|con operador|por|con)\b.*$/i, '');
+    grupos[nom.toLowerCase()] = (grupos[nom.toLowerCase()] || {nombre: nom, n: 0}); grupos[nom.toLowerCase()].n += nEq;
+    const tieneOp = m.op ?? (/operador/i.test(it.desc || '') || apu.some(r => /operador|conductor/i.test(r.c || '')));
+    if (tieneOp) op = true;
+    const alI = m.al || (apu.some(r => /alimentaci|alojamiento/i.test(r.c || '')) ? 'terracop' : null); if (alI) al = al === 'terracop' ? al : alI;
+    const coI = m.co || (apu.some(r => /di[eé]sel|petr[oó]leo|combustible/i.test(r.c || '')) ? 'terracop' : null); if (coI) co = co === 'terracop' ? co : coI;
+    if (m.turno && !turno) turno = m.turno;
+    let d = m.dias; if (!d) { const ra = apu.find(r => /alimentaci/i.test(r.c || '')); if (ra) d = Math.round((+ra.q || 0) / nEq); }
+    if (!d) d = it.unidad === 'día' ? +it.cantidad / nEq : it.unidad === 'mes' ? +it.cantidad * 30 / nEq : it.unidad === 'hm' ? Math.ceil(+it.cantidad / nEq / (m.hd || P('horas_mes', 180) / 30)) : 0;
+    if (d > dias) dias = d;
+    if (it.unidad === 'hm') { const h = m.horas_equipo || (+it.cantidad / nEq); horas = horas == null ? h : Math.min(horas, h); }
+    if (it.unidad === 'día' || it.unidad === 'mes') uDia = it.unidad;
+  });
+  const mov = its.some(i => /moviliz/i.test(i.desc || '')) || (c.items || []).some(i => i.tipo === 'g' && /moviliz/i.test(i.desc || '') && its.some(x => String(x.item || '').startsWith(i.item + '.')));
+  const lista = Object.values(grupos);
+  return {lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov};
+}
+const TURNOTXT = {libre: 'en jornada diurna con horario libre', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
+/* valores que se actualizan solos dentro de los textos (span data-v) */
+function valoresDoc(c, S, minera) {
+  const m = byId('mandantes', c.mandante_id) || {};
+  return {
+    cliente: c.cliente || m.nombre || '', contacto: c.atencion || '', cargo: c.atencion_cargo || '',
+    faena: c.faena || (minera ? '' : 'el lugar de trabajo indicado por el mandante'),
+    ref: c.referencia || '', dias: S.dias ? String(S.dias) : '', horas: S.horas ? nf(S.horas) : '', validez: String(c.validez_dias || 10),
+    rut: AJ('empresa_rut') || '76.336.122-5', empresa: AJ('empresa') || 'Terracop SpA', numero: String(c.numero)
+  };
+}
+const V = k => `<span data-v="${k}" contenteditable="false"></span>`;
+function textosBase(c, S, minera) {
+  const eqTxt = S.lista.length === 1 ? nombreEquipos(S.lista[0].nombre, S.lista[0].n) : S.lista.map(g => nombreEquipos(g.nombre, g.n)).join(', ') || 'equipos';
+  const turno = S.turno ? TURNOTXT[S.turno] : 'en jornada diurna', cont = S.turno && S.turno !== '5x2' ? ' continuos' : '';
+  const minimo = S.horas ? `, con un mínimo de ${V('horas')} horas máquina por equipo` : '';
+  const ops = S.op ? ' con operador' : '';
+  const T = {};
+  T.carta = `<p>Señor(a):<br><b>${V('contacto')}</b>${c.atencion_cargo || minera ? '<br>' + V('cargo') : ''}<br>${V('cliente')}<br><u>Presente</u></p>
+<p>De nuestra consideración:</p>
+<p>Adjuntamos a usted nuestra oferta económica correspondiente al “${V('ref')}”${c.faena ? ', a ejecutarse en ' + V('faena') : ''}, la cual considera los alcances que se describen a continuación.</p>
+<p>Sin otro particular, saluda atentamente a usted,</p>`;
+  const al = [];
+  al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de ${eqTxt}${ops}, por un periodo de ${V('dias')} días${cont}, ${turno}${minimo}.`);
+  al.push(`Se consideran como parte de nuestra oferta los siguientes equipos:<ol>${S.lista.map(g => `<li>${capi(nombreEquipos(g.nombre, g.n))}.</li>`).join('') || '<li>…</li>'}</ol>`);
+  if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día (sin sistema supresor de incendio automático o semiautomático).</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
+  else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
+  al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
+  if (S.op) al.push(S.al === 'terracop' ? 'Se considera la alimentación, el alojamiento y el traslado de los operadores hasta el área de trabajo, por cuenta de Terracop.' : 'Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
+  if (S.mov) al.push(`Se considera la movilización y desmovilización de los equipos hasta ${V('faena')}.`);
+  al.push('Se considera disponibilidad de los equipos previa coordinación del inicio del servicio con el mandante.');
+  T.alcance = `<p>De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el siguiente alcance de servicio:</p><ol type="a">${al.map(x => `<li>${x}</li>`).join('')}</ol>`;
+  const ap = [];
+  if (S.co === 'mandante') ap.push('Combustible y AdBlue para la operación diaria de los equipos, suministrado en el punto de trabajo.');
+  if (S.op && S.al === 'mandante') ap.push('Alimentación y estadía en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación con el campamento será aportada por Terracop, previo a los cambios de turno.');
+  if (!minera) ap.push('Acceso expedito y seguro de los equipos al lugar de trabajo.');
+  const ex = [];
+  if (ap.length) ex.push(`Se consideran los siguientes aportes del mandante:<ul>${ap.map(x => `<li>${x}</li>`).join('')}</ul>`);
+  if (minera) {
+    ex.push('Se excluye del alcance de la oferta la incorporación de supervisor y prevencionista de riesgos, dado que se trata de un servicio de arriendo de maquinaria con operador, el cual será administrado operativamente en sitio por el mandante. De igual forma, se considera el apoyo del Departamento de Prevención de Riesgos de Terracop, que realizará asistencia en terreno con el objetivo de resguardar el sistema de gestión de seguridad de Terracop y el del mandante.');
+    ex.push('Se excluye de la presente oferta la instalación de sistema supresor de incendio automático o semiautomático.');
+  }
+  ex.push('Se excluye el suministro de instalación de faena para el presente servicio.');
+  if (minera) ex.push('Dado que no se conoce el detalle de las actividades a ejecutar, y con la finalidad de no sobrestimar el costo del servicio, se considera que los elementos de desgaste serán aporte de Terracop a costo del mandante, y su cambio será realizado por el equipo de mantenimiento de Terracop en faena.');
+  else ex.push('Se excluyen los trabajos adicionales no indicados en el presente alcance, los que podrán ser cotizados por separado.');
+  T.exclusiones = `<p>Se consideran las siguientes exclusiones y aportes del mandante, no incluidos en la presente evaluación:</p><ol>${ex.map(x => `<li>${x}</li>`).join('')}</ol>`;
+  T.oferta_intro = `<p>De acuerdo con el alcance antes señalado, se considera la siguiente oferta económica por arriendo de equipos${ops}:</p>`;
+  const notas = [];
+  if (S.dias) notas.push(`La tarifa indicada considera un periodo de arriendo de ${V('dias')} días${cont}${S.horas ? ` con un mínimo de ${V('horas')} horas máquina por equipo` : ''}.`);
+  if (S.horas) notas.push('Las horas trabajadas sobre el mínimo se cobrarán a la misma tarifa unitaria.');
+  const notaCot = (c.nota || '').trim(); if (notaCot && !/^Los valores indicados son netos y no incluyen IVA\.\s*\nValidez de la oferta: \d+ días\.?$/.test(notaCot)) notaCot.split('\n').filter(Boolean).forEach(l => notas.push(esc(l)));
+  T.notas = notas.length ? `<p><b>Nota:</b></p><ol>${notas.map(x => `<li>${x}</li>`).join('')}</ol>` : '<p></p>';
+  const cg = [];
+  cg.push(`Inicio de los servicios previa confirmación de ${V('cliente')} y emisión de Orden de Compra o Contrato a favor de ${V('empresa')}, RUT ${V('rut')}.`);
+  cg.push(minera || S.dias > 31 ? 'Se consideran estados de pago mensuales.' : 'Se considera un estado de pago al término del servicio.');
+  cg.push('Condiciones de pago: factura a 30 días, una vez aprobado el estado de pago.');
+  cg.push('No se consideran incluidos en el alcance de la presente propuesta: boletas de garantía, retenciones, seguros de construcción y responsabilidad civil. De requerirse alguno de estos ítems, podrá ser evaluado económicamente de manera adicional a la presente oferta, previa solicitud del mandante.');
+  cg.push(c.mostrar_iva ? 'Los valores netos se indican junto con el IVA correspondiente.' : 'Los valores antes indicados no incluyen IVA.');
+  cg.push(`Se considera una validez de la oferta de ${V('validez')} días.`);
+  T.consideraciones = `<p>Se consideran las siguientes condiciones generales y comerciales del servicio:</p><ul>${cg.map(x => `<li>${x}</li>`).join('')}</ul>`;
+  return T;
+}
+function agruparItems(items) {   // ítems iguales (misma descripción, unidad y precio) en una sola línea
+  const out = []; let g = null;
+  itemsVisibles(items).forEach(it => {
+    if (it.tipo === 'g') { g = it; out.push({...it}); return; }
+    const prev = out.find(x => x.tipo === 'i' && x._g === (g && g.item) && x.desc === it.desc && x.unidad === it.unidad && +x.precio === +it.precio);
+    if (prev) { prev.cantidad = (+prev.cantidad || 0) + (+it.cantidad || 0); prev._n += 1; }
+    else out.push({...it, _g: g && g.item, _n: 1});
+  });
+  const cnt = {};
+  out.forEach(x => { if (x.tipo !== 'i') return; const k = x._g || ''; cnt[k] = (cnt[k] || 0) + 1; x.item = x._g ? `${x._g}.${cnt[k]}` : String(cnt[k]); if (x._n > 1 && x.equipo_tipo_id) x.desc += ` · ${x._n} equipos`; });
+  return out;
+}
+function chequeoEnvio(c, S, minera) {
+  const L = [], its = (c.items || []).filter(i => i.tipo === 'i'), vis = its.filter(i => !i.oculto), add = (lv, t) => L.push({lv, t});
+  if (esPruebaCot(c)) add('red', 'Es una cotización de <b>PRUEBA</b>: el documento sale con el timbre "PRUEBA – NO ENVIAR".');
+  if (!c.mandante_id && !c.cliente) add('red', 'Falta el <b>mandante / cliente</b>.');
+  if (!c.atencion) add(minera ? 'red' : 'orange', 'Falta el <b>contacto</b> a quién va dirigida la carta (campo "Contacto" en la cotización).');
+  if (!c.atencion_cargo && minera) add('orange', 'Falta el <b>cargo del contacto</b>.');
+  if (!c.faena && (minera || S.mov)) add(minera ? 'red' : 'orange', 'Falta la <b>faena / lugar de trabajo</b>' + (minera ? '.' : ' (por ahora dice "el lugar de trabajo indicado por el mandante").'));
+  vis.forEach(i => { if (!(+i.precio)) add('red', `<b>${esc(i.item)}</b> ${esc((i.desc || '').slice(0, 45))}: sin precio.`); else if (!(+i.cantidad)) add('red', `<b>${esc(i.item)}</b>: cantidad en cero.`); });
+  its.forEach(i => { if (i.costo == null || i.costo === '') add('orange', `<b>${esc(i.item)}</b> ${esc((i.desc || '').slice(0, 45))}: sin costo (no se sabe la utilidad).`);
+    else if (+i.precio && +i.precio < +i.costo && !i.oculto) add('red', `<b>${esc(i.item)}</b>: el precio (${clp(i.precio)}) es <b>menor que el costo</b> (${clp(i.costo)}).`);
+    if (i.costo_uf) add('info', `<b>${esc(i.item)}</b>: subarrendado a ${esc(i.proveedor || 'proveedor')} a ${nf(i.costo_uf, 2)} UF. Confirme el valor con el proveedor.`); });
+  const porTipo = {}; vis.filter(i => i.equipo_tipo_id).forEach(i => { (porTipo[i.equipo_tipo_id + i.unidad] = porTipo[i.equipo_tipo_id + i.unidad] || new Set()).add(+i.precio); });
+  if (Object.values(porTipo).some(st => st.size > 1)) add('orange', 'Hay <b>equipos iguales con precios distintos</b>: el cliente lo va a notar.');
+  if (!S.dias && S.lista.length) add('orange', 'No se pudo saber los <b>días de arriendo</b>: revise el alcance (página 3).');
+  if (!AJ('firma')) add('orange', 'No hay <b>firma</b> guardada (Catálogo → Empresa y firma).');
+  if (c.fecha && c.fecha !== todayISO() && c.estado === 'borrador') add('info', `La fecha de la cotización es ${fd(c.fecha)} (no es hoy).`);
+  const t = totCot(c); if (t.costo && t.util / (t.neto || 1) < 0.1) add('orange', `La utilidad total es baja: ${clp(t.util)} (${nf(t.util / (t.neto || 1) * 100)}% sobre el precio).`);
+  return L;
+}
+let CP = null, cpTimer = null;
+function docCompleto(id) {
+  const c = byId('cotizaciones', id); if (!c) { $('view').innerHTML = '<div class="msg err">Cotización no encontrada.</div>'; return; }
+  if (!CP || CP.id !== id) CP = {id, doc: JSON.parse(JSON.stringify(c.doc || {}))};
+  const doc = CP.doc; doc.txt = doc.txt || {};
+  const mand = byId('mandantes', c.mandante_id) || {}, minera = (doc.plantilla || (mand.requiere_hes ? 'minera' : 'particular')) === 'minera';
+  const S = datosServicio(c), base = textosBase(c, S, minera), vals = valoresDoc(c, S, minera), t = totCot(c), logo = document.querySelector('.logo').src, firma = AJ('firma');
+  const N = 5, titulo = (c.referencia || 'Servicio').toUpperCase(), codigo = codigoCot(c);
+  const hdr = i => `<table class="cph"><tr><td class="cpl"><img src="${logo}" alt="Terracop"></td><td class="cpt">“${txt(titulo)}”</td><td class="cpr"><p>Código: ${txt(codigo)}</p><p>Página ${i} de ${N}</p><p>Cotización N°${txt(nCot(c))}</p><p>Fecha: ${fLarga(c.fecha)}</p></td></tr></table>`;
+  const foot = i => `<p class="cpf">Página ${i} de ${N}</p>`;
+  const blk = k => `<div class="cpe noprint-edit">${doc.txt[k] != null ? `<button class="sm noprint cpreset" data-reset="${k}" title="Volver al texto automático">↺ texto automático</button>` : ''}<div class="cpx" data-k="${k}" contenteditable="true" spellcheck="true" lang="es">${doc.txt[k] != null ? doc.txt[k] : base[k]}</div></div>`;
+  const firmaHTML = `<div class="cpfirma">${firma ? `<img src="${firma}" alt="">` : '<div style="height:60px"></div>'}<p><b>${txt(AJ('firmante_nombre'))}</b></p><p>${txt(AJ('firmante_cargo'))}</p></div>`;
+  const cc = {...c, items: doc.agrupar ? agruparItems(c.items) : c.items};
+  const pages = [
+    `<div class="cpport"><p class="cpcli">${txt((vals.cliente || '[cliente]').toUpperCase())}</p><p class="cpcot">COTIZACIÓN</p><p class="cpcot2">“${txt(titulo)}”</p></div>
+     <table class="cprev"><tr><th>REVISIÓN</th><th>NOMBRE</th><th>CARGO</th><th>FIRMA</th><th>FECHA</th></tr>
+     <tr><td>${c.rev}</td><td>${txt((AJ('firmante_nombre') || '').toUpperCase())}</td><td>${txt((AJ('firmante_cargo') || '').toUpperCase())}</td><td>${firma ? `<img src="${firma}" alt="" style="height:44px">` : ''}</td><td>${fd(c.fecha)}</td></tr></table>`,
+    `${blk('carta')}${firmaHTML}`,
+    `<h3 class="cps">1. ALCANCE DEL SERVICIO</h3>${blk('alcance')}`,
+    `<h3 class="cps">1.1. EXCLUSIONES Y APORTES DEL MANDANTE</h3>${blk('exclusiones')}`,
+    `<h3 class="cps">2. OFERTA ECONÓMICA</h3>${blk('oferta_intro')}<div class="cptab">${ofertaHTML(cc, t, logo)}</div>${blk('notas')}<h3 class="cps">3. CONSIDERACIONES GENERALES</h3>${blk('consideraciones')}`
+  ];
+  const fname = `Cotización ${c.numero} ${fCorta(c.fecha)}`, CHK = chequeoEnvio(c, S, minera), nRojo = CHK.filter(x => x.lv === 'red').length;
+  const chkHTML = `<div class="card noprint"><h2 style="margin:0 0 6px">✅ Revisión antes de enviar</h2>
+    ${CHK.length ? `<ul class="cpchk">${CHK.map(x => `<li class="${x.lv}">${x.lv === 'red' ? '⛔' : x.lv === 'orange' ? '⚠️' : 'ℹ️'} ${x.t}</li>`).join('')}</ul>` : '<div class="msg ok small" style="margin:0">Todo en orden: datos del mandante completos, precios y costos ingresados.</div>'}
+    <div class="row small" style="margin-top:8px;gap:8px"><span>Total neto: <b>${clp(t.neto)}</b>${verInternos && t.costo ? ` · Utilidad: <b>${clp(t.util)}</b> (${nf(t.util / (t.neto || 1) * 100)}%)` : ''} · Estado: ${estCot(c.estado)}</span><span class="sp"></span>
+    <a class="btn sm" href="#c-${c.id}" style="text-decoration:none">✏️ Corregir en la cotización</a>${c.estado === 'borrador' ? '<button class="sm" id="cpEnv">📨 Marcar como Enviada</button>' : ''}</div>
+    <div class="small muted" style="margin-top:6px">Lea también los textos de abajo: el corrector marca en rojo las palabras mal escritas.</div></div>`;
+  $('view').innerHTML = `
+  <div class="row noprint" style="margin-bottom:10px"><a href="#c-${c.id}">← Volver a editar la cotización</a></div>
+  ${D.hasDoc ? '' : '<div class="msg err noprint">Para guardar los textos editados y la faena, ejecute <b>sql/12_oferta_completa.sql</b> en Supabase. Mientras tanto puede generar el PDF igual.</div>'}
+  ${esPruebaCot(c) ? '<div class="msg noprint" style="background:#ede1ff;color:#6a3fb3">🧪 Cotización de PRUEBA: el documento lleva el timbre "PRUEBA – NO ENVIAR".</div>' : ''}
+  <div class="card noprint"><div class="row" style="gap:8px">
+    <label class="row small" style="margin:0;gap:6px">Plantilla <select id="cpPl" style="width:auto"><option value="minera">Minera / empresa (equipamiento minero, campamento)</option><option value="particular">Particular (más corta)</option></select></label>
+    <label class="row small" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cpAg" style="width:auto" ${doc.agrupar ? 'checked' : ''}> Mostrar equipos iguales en una sola línea</label>
+    <span class="sp"></span><button id="cpSave">💾 Guardar textos</button><button id="cpWord">⬇️ Word</button><button class="pri" id="cpPdf">🖨️ Guardar PDF</button></div>
+    <div class="small muted" style="margin-top:8px">Toque cualquier texto para corregirlo (los errores de ortografía se marcan en rojo). Los datos <span style="border-bottom:2px dotted #3d7fd1">subrayados</span> (cliente, días, horas, faena…) y la tabla de precios vienen de la cotización: si la cambia, aquí se actualizan solos. Lo <span style="background:#fff3b8">amarillo</span> falta completarlo en la cotización. Archivo: <b>${txt(fname)}</b>.</div>
+    <div id="cpSt" class="small muted" style="margin-top:4px"></div></div>
+  ${chkHTML}
+  <div class="cpwrap"><div class="cp" id="cpDoc">${pages.map((b, i) => `<section class="pg">${hdr(i + 1)}${esPruebaCot(c) ? '<div class="cptest">PRUEBA – NO ENVIAR</div>' : ''}<div class="pgb">${b}</div>${foot(i + 1)}</section>`).join('')}</div></div>`;
+  const refresh = () => document.querySelectorAll('#cpDoc [data-v]').forEach(s => { const v = vals[s.dataset.v]; s.setAttribute('contenteditable', 'false'); s.textContent = v || `[${s.dataset.v}]`; s.classList.toggle('cpfal', !v); });
+  refresh();
+  $('cpPl').value = minera ? 'minera' : 'particular';
+  const guardarDoc = async silent => {
+    if (!D.hasDoc) { if (!silent) alert('Falta ejecutar sql/12_oferta_completa.sql en Supabase para guardar los textos.'); return; }
+    try { const r = await upd('cotizaciones', c.id, {doc}); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; $('cpSt').textContent = '✓ Textos guardados ' + new Date().toLocaleTimeString('es-CL').slice(0, 5); if (!silent) toast('Textos guardados'); }
+    catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); $('cpSt').textContent = '⚠ No se pudo guardar: ' + e.message; }
+  };
+  document.querySelectorAll('#cpDoc .cpx').forEach(el => el.oninput = () => { doc.txt[el.dataset.k] = el.innerHTML; $('cpSt').textContent = 'Cambios sin guardar…'; clearTimeout(cpTimer); cpTimer = setTimeout(() => guardarDoc(true), 1500); });
+  document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { if (!confirm('¿Volver al texto automático? Se pierden los cambios que hizo a mano en este bloque.')) return; delete doc.txt[b.dataset.reset]; guardarDoc(true); docCompleto(id); });
+  $('cpPl').onchange = () => { const hay = Object.keys(doc.txt).length; if (hay && !confirm('Cambiar la plantilla vuelve a generar los textos automáticos. Los bloques que corrigió a mano se mantienen. ¿Continuar?')) { $('cpPl').value = minera ? 'minera' : 'particular'; return; } doc.plantilla = $('cpPl').value; guardarDoc(true); docCompleto(id); };
+  $('cpAg').onchange = () => { doc.agrupar = $('cpAg').checked; guardarDoc(true); docCompleto(id); };
+  $('cpSave').onclick = () => guardarDoc(false);
+  const okRojo = () => !nRojo || confirm(`Hay ${nRojo} punto(s) en rojo en la revisión. ¿Generar el documento igual?`);
+  if ($('cpEnv')) $('cpEnv').onclick = () => { if (!okRojo()) return; if (!confirm('¿Marcar la cotización como Enviada (hoy)?')) return; guardar(async () => { const r = await upd('cotizaciones', c.id, {estado: 'enviada', fecha_envio: c.fecha_envio || todayISO()}); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; if (COT && COT.id === c.id) COT = null; docCompleto(id); }, 'Cotización marcada como Enviada'); };
+  $('cpPdf').onclick = () => { if (!okRojo()) return; const tt = document.title; document.title = fname; document.body.classList.add('printcp'); window.print(); setTimeout(() => { document.title = tt; document.body.classList.remove('printcp'); }, 1000); };
+  $('cpWord').onclick = async () => { if (!okRojo()) return; try { const b = await docxDesdeHTML($('cpDoc')), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = fname + '.docx'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); } catch (e) { alert('No se pudo generar el Word: ' + e.message); } };
+}
+
+/* ---------- Exportar a Word (.docx) desde el documento en pantalla ---------- */
+async function docxDesdeHTML(root) {
+  const X = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const media = [], rels = [];
+  const imgRel = el => {
+    const src = el.getAttribute('src') || '', m = src.match(/^data:image\/(png|jpe?g);base64,(.*)$/); if (!m) return null;
+    const bin = atob(m[2]), u8 = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const ext = m[1] === 'png' ? 'png' : 'jpeg', n = media.length + 1, rid = 'rIdImg' + n;
+    media.push({name: `media/image${n}.${ext}`, data: u8}); rels.push(`<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image${n}.${ext}"/>`);
+    const w = el.offsetWidth || el.naturalWidth || 100, h = el.offsetHeight || el.naturalHeight || 40, cx = Math.round(w * 9525), cy = Math.round(h * 9525);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${n}" name="Imagen ${n}"/><a:graphic xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:nvPicPr><pic:cNvPr id="${n}" name="image${n}.${ext}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  };
+  const hex = col => { const m = (col || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?/); if (!m || (m[4] != null && +m[4] === 0)) return null; return [m[1], m[2], m[3]].map(v => (+v).toString(16).padStart(2, '0')).join('').toUpperCase(); };
+  const skip = el => el.nodeType === 1 && (el.classList.contains('noprint') || el.tagName === 'BUTTON' || getComputedStyle(el).display === 'none');
+  const runs = (node) => {
+    if (node.nodeType === 3) {
+      const t = node.textContent.replace(/\s+/g, ' '); if (!t.trim() && !/ /.test(t)) return '';
+      const cs = getComputedStyle(node.parentElement), b = +cs.fontWeight >= 600, u = /underline/.test(cs.textDecorationLine), sz = Math.round(parseFloat(cs.fontSize) * 1.5), col = hex(cs.color);
+      return `<w:r><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>${b ? '<w:b/>' : ''}${u ? '<w:u w:val="single"/>' : ''}${col && col !== '000000' && col !== '1B2430' ? `<w:color w:val="${col}"/>` : ''}<w:sz w:val="${sz}"/></w:rPr><w:t xml:space="preserve">${X(t)}</w:t></w:r>`;
+    }
+    if (node.nodeType !== 1 || skip(node)) return '';
+    if (node.tagName === 'BR') return '<w:r><w:br/></w:r>';
+    if (node.tagName === 'IMG') return imgRel(node) || '';
+    return [...node.childNodes].map(runs).join('');
+  };
+  const BLOCK = /^(P|DIV|H[1-6]|OL|UL|LI|TABLE|SECTION)$/;
+  const para = (el, inner, extra) => { const cs = getComputedStyle(el); let jc = {center: 'center', right: 'right', end: 'right', justify: 'both'}[cs.textAlign]; if (jc === 'both' && /<w:br\/>/.test(inner)) jc = null;
+    const mb = Math.round((parseFloat(cs.marginBottom) || 0) * 15), after = extra && extra.after != null ? extra.after : Math.max(100, mb);
+    return `<w:p><w:pPr>${extra && extra.ind ? extra.ind : ''}<w:spacing w:before="0" w:after="${after}"/>${jc ? `<w:jc w:val="${jc}"/>` : ''}</w:pPr>${extra && extra.pre ? `<w:r><w:rPr><w:sz w:val="${Math.round(parseFloat(cs.fontSize) * 1.5)}"/></w:rPr><w:t xml:space="preserve">${X(extra.pre)}</w:t></w:r>` : ''}${inner}</w:p>`; };
+  const table = el => {
+    const rows = [...el.rows], ncol = Math.max(...rows.map(r => [...r.cells].reduce((t, c) => t + (c.colSpan || 1), 0)));
+    const W = 9638, cw = Math.floor(W / ncol);
+    const full = rows.find(r => r.cells.length === ncol), first = full ? [...full.cells] : [], widths = [];
+    if (first.length === ncol) first.forEach(c => widths.push(c.offsetWidth)); const tw = widths.reduce((a, b) => a + b, 0);
+    const grid = widths.length === ncol && tw ? widths.map(w => Math.round(w / tw * W)) : Array(ncol).fill(cw);
+    let gi;
+    return `<w:tbl><w:tblPr><w:tblW w:w="${W}" w:type="dxa"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(s => `<w:${s} w:val="single" w:sz="4" w:space="0" w:color="9FB3C8"/>`).join('')}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:left w:w="80" w:type="dxa"/><w:right w:w="80" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${grid.map(w => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${rows.map(r => { gi = 0; return `<w:tr>${[...r.cells].map(c => { const sp = c.colSpan || 1, w = grid.slice(gi, gi + sp).reduce((a, b) => a + b, 0); gi += sp; const bg = hex(getComputedStyle(c).backgroundColor);
+      const body = blocks(c); return `<w:tc><w:tcPr><w:tcW w:w="${w}" w:type="dxa"/>${sp > 1 ? `<w:gridSpan w:val="${sp}"/>` : ''}${bg && bg !== 'FFFFFF' ? `<w:shd w:val="clear" w:color="auto" w:fill="${bg}"/>` : ''}<w:vAlign w:val="center"/></w:tcPr>${body || '<w:p/>'}</w:tc>`; }).join('')}</w:tr>`; }).join('')}</w:tbl><w:p><w:pPr><w:spacing w:after="60"/></w:pPr></w:p>`;
+  };
+  const blocks = (el, lvl = 0) => { const cs = getComputedStyle(el), pt = Math.round((parseFloat(cs.paddingTop) || 0) * 15), pb = Math.round((parseFloat(cs.paddingBottom) || 0) * 15), sp = v => v > 300 ? `<w:p><w:pPr><w:spacing w:before="0" w:after="${v}"/></w:pPr></w:p>` : '';
+    return sp(pt) + blocksNodes([...el.childNodes], el, lvl) + sp(pb); };
+  const blocksNodes = (nodes, el, lvl) => {
+    let out = '', inl = [];
+    const flush = () => { const r = inl.map(runs).join(''); if (r.replace(/<[^>]+>/g, '').trim() || /w:drawing|w:br/.test(r)) out += para(el, r, {after: el.tagName === 'TD' || el.tagName === 'TH' ? 0 : 100}); inl = []; };
+    nodes.forEach(n => {
+      if (n.nodeType === 1 && skip(n)) return;
+      if (n.nodeType === 1 && BLOCK.test(n.tagName)) {
+        flush();
+        if (n.tagName === 'TABLE') out += table(n);
+        else if (n.tagName === 'OL' || n.tagName === 'UL') {
+          [...n.children].filter(x => x.tagName === 'LI').forEach((li, i) => {
+            const pre = n.tagName === 'UL' ? '•\t' : (n.getAttribute('type') === 'a' ? String.fromCharCode(97 + i) : String(i + 1)) + '.\t';
+            const ind = `<w:tabs><w:tab w:val="left" w:pos="${360 * (lvl + 1) + 360}"/></w:tabs><w:ind w:left="${360 * (lvl + 1) + 360}" w:hanging="360"/>`;
+            const inlKids = [...li.childNodes].filter(x => !(x.nodeType === 1 && BLOCK.test(x.tagName))), blkKids = [...li.childNodes].filter(x => x.nodeType === 1 && BLOCK.test(x.tagName));
+            out += para(li, inlKids.map(runs).join(''), {pre, ind, after: 60});
+            if (blkKids.length) out += blocksNodes(blkKids, li, lvl + 1);
+          });
+        } else out += blocks(n, lvl);
+      } else inl.push(n);
+    });
+    flush();
+    return out;
+  };
+  const pages = [...root.querySelectorAll('section.pg')];
+  const body = pages.map((pg, i) => blocks(pg) + (i < pages.length - 1 ? '<w:p><w:r><w:br w:type="page"/></w:r></w:p>' : '')).join('');
+  const docXml = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:body>${body}<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="851" w:right="1134" w:bottom="851" w:left="1134" w:header="425" w:footer="425" w:gutter="0"/></w:sectPr></w:body></w:document>`;
+  const files = {
+    '[Content_Types].xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+    '_rels/.rels': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+    'word/styles.xml': '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/><w:lang w:val="es-CL"/></w:rPr></w:rPrDefault><w:pPrDefault><w:pPr><w:spacing w:after="100" w:line="259" w:lineRule="auto"/></w:pPr></w:pPrDefault></w:docDefaults></w:styles>',
+    'word/document.xml': docXml,
+    'word/_rels/document.xml.rels': `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rIdSt" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>${rels.join('')}</Relationships>`
+  };
+  media.forEach(m => { files['word/' + m.name] = m.data; });
+  return zipStore(files, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
 }
 
 /* ---------- Empresa y firma (en Catálogo) ---------- */

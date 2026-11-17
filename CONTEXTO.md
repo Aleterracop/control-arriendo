@@ -71,3 +71,10 @@ Resumen del proyecto para retomarlo en otra conversación. Al abrir una conversa
   - 05-11: horómetro inicial 6803 → ¿6903?
   - report 27654 → ¿27564?
   - salto entre 6792 y 6800 (22-23 oct).
+
+## Oferta completa (17-11-2026)
+- SQL 12: `cotizaciones.faena`, `cotizaciones.doc` (jsonb: plantilla, agrupar, txt = bloques corregidos a mano) y `ajustes.empresa_rut`. Contacto y cargo usan `atencion` / `atencion_cargo` (ya existían).
+- Ruta `#cp-<id>`: documento de 5 páginas formato TEMTPRCO (portada, carta, alcance, exclusiones y aportes, oferta + consideraciones), firmado por el firmante de "Empresa y firma".
+- Datos vivos: tabla, totales y spans `data-v` (cliente, días, horas, faena, validez, RUT) se recalculan desde la cotización; los bloques editados quedan en `doc.txt`.
+- Revisión antes de enviar (contacto, faena, precios, costos, precios distintos en equipos iguales, utilidad baja, prueba). PDF por imprimir (carta, nombre "Cotización N° ddmmaaaa") y Word .docx propio.
+- Asistente: turno "Continuo · horario libre" (1 operador) y `meta` por ítem (turno, días, horas, operador, alimentación, combustible).
