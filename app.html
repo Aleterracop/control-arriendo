@@ -124,6 +124,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 @media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
 .cpwrap{overflow-x:auto;padding:4px 0 20px}
+.cptool{position:sticky;top:6px;z-index:25;padding:10px 14px;box-shadow:0 6px 18px rgba(20,60,110,.18)}
 .cp{font-family:Calibri,Arial,sans-serif;color:#1b2430;font-size:14.5px;line-height:1.35}
 .cp .pg{width:216mm;min-height:279mm;box-sizing:border-box;padding:10mm 16mm;margin:0 auto 16px;background:#fff;box-shadow:var(--sh);border:1px solid var(--line);display:flex;flex-direction:column;page:cp}
 .cp .pgb{flex:1;padding-top:8mm}
@@ -1738,13 +1739,13 @@ function docCompleto(id) {
   <div class="row noprint" style="margin-bottom:10px"><a href="#c-${c.id}">← Volver a editar la cotización</a></div>
   ${D.hasDoc ? '' : '<div class="msg err noprint">Para guardar los textos editados y la faena, ejecute <b>sql/12_oferta_completa.sql</b> en Supabase. Mientras tanto puede generar el PDF igual.</div>'}
   ${esPruebaCot(c) ? '<div class="msg noprint" style="background:#ede1ff;color:#6a3fb3">🧪 Cotización de PRUEBA: el documento lleva el timbre "PRUEBA – NO ENVIAR".</div>' : ''}
-  <div class="card noprint"><div class="row" style="gap:8px">
+  <div class="card noprint cptool"><div class="row" style="gap:8px">
     <label class="row small" style="margin:0;gap:6px">Plantilla <select id="cpPl" style="width:auto"><option value="minera">Minera / empresa (equipamiento minero, campamento)</option><option value="particular">Particular (más corta)</option></select></label>
     <label class="row small" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cpAg" style="width:auto" ${doc.agrupar ? 'checked' : ''}> Mostrar equipos iguales en una sola línea</label>
     <span class="row" style="gap:4px;margin:0" title="Seleccione el texto y elija el formato"><button class="sm" data-fmt="bold" title="Negrita (Ctrl+B)"><b>N</b></button><button class="sm" data-fmt="underline" title="Subrayado (Ctrl+U)"><u>S</u></button><button class="sm" data-fmt="justifyFull" title="Justificar">☰ Justificar</button><button class="sm" data-fmt="justifyLeft" title="Alinear a la izquierda">⇤ Izquierda</button><button class="sm" data-fmt="insertUnorderedList" title="Viñetas">• Viñetas</button></span>
     <span class="sp"></span><button id="cpSave">💾 Guardar textos</button><button id="cpWord">⬇️ Word</button><button class="pri" id="cpPdf">🖨️ Guardar PDF</button></div>
-    <div class="small muted" style="margin-top:8px">Toque cualquier texto para corregirlo; para negrita, subrayado o justificar, seleccione el texto y use los botones N, S y ☰ (los errores de ortografía se marcan en rojo). Los datos <span style="border-bottom:2px dotted #3d7fd1">subrayados</span> (cliente, días, horas, faena…) y la tabla de precios vienen de la cotización: si la cambia, aquí se actualizan solos. Lo <span style="background:#fff3b8">amarillo</span> falta completarlo en la cotización. Archivo: <b>${txt(fname)}</b>.</div>
     <div id="cpSt" class="small muted" style="margin-top:4px"></div></div>
+    <div class="card noprint"><div class="small muted">Toque cualquier texto para corregirlo; para negrita, subrayado o justificar, seleccione el texto y use los botones N, S y ☰ (los errores de ortografía se marcan en rojo). Los datos <span style="border-bottom:2px dotted #3d7fd1">subrayados</span> (cliente, días, horas, faena…) y la tabla de precios vienen de la cotización: si la cambia, aquí se actualizan solos. Lo <span style="background:#fff3b8">amarillo</span> falta completarlo en la cotización. Archivo: <b>${txt(fname)}</b>. La barra de botones lo acompaña mientras baja por el documento.</div></div>
   ${chkHTML}
   <div class="cpwrap"><div class="cp" id="cpDoc">${pages.map((b, i) => `<section class="pg">${hdr(i + 1)}${esPruebaCot(c) ? '<div class="cptest">PRUEBA – NO ENVIAR</div>' : ''}<div class="pgb">${b}</div>${foot(i + 1)}</section>`).join('')}</div></div>`;
   const refresh = () => document.querySelectorAll('#cpDoc [data-v]').forEach(s => { const v = vals[s.dataset.v]; s.setAttribute('contenteditable', 'false'); s.textContent = v || `[${s.dataset.v}]`; s.classList.toggle('cpfal', !v); });
