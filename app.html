@@ -405,9 +405,9 @@ function vArriendos() {
     const c = calc(a), pct = c.base ? Math.max(0, Math.min(100, c.pend / c.base * 100)) : 0;
     const cls = pct >= 100 ? 'x' : pct >= P('umbral_horas', 0.85) * 100 ? 'w' : '';
     const fl = byId('flota', a.flota_id);
-    const tp = esPruebaArr(a);
-    return `<div class="ac${tp ? ' prueba' : ''}" data-id="${a.id}">
-      <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${tp ? chipPrueba : ''}${estChip(a.estado)}</div>
+    const tp = esPruebaArr(a), sub = fl && propOf(fl) === 'arriendo';
+    return `<div class="ac${tp ? ' prueba' : ''}" data-id="${a.id}" style="${sub && !tp ? 'border-top-color:#f08a24;background:linear-gradient(180deg,#fff7ef,#fff 60%)' : ''}">
+      <div class="row"><h3>${esc(a.descripcion)}</h3><span class="sp"></span>${tp ? chipPrueba : ''}${sub ? '<span class="chip c-orange">Subarrendado</span>' : ''}${estChip(a.estado)}</div>
       <div class="muted small">${esc(mandante(a).nombre || '—')} · ${fl ? esc(fl.codigo) + (fl.anio ? ' (' + fl.anio + ')' : '') + ' · ' : ''}${clp(a.tarifa)} / ${unidadMod(a.modalidad)}</div>
       ${a.modalidad === 'global' ? '' : `<div class="bar"><i class="${cls}" style="width:${pct}%"></i></div>
       <div class="small">${a.modalidad === 'hora' ? 'Horas' : 'Días'} del período: <b>${verU(a, c.pend)} / ${verU(a, c.base)}</b></div>`}
