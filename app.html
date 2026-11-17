@@ -129,7 +129,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 .cp .pg{width:216mm;min-height:279mm;box-sizing:border-box;padding:10mm 16mm;margin:0 auto 16px;background:#fff;box-shadow:var(--sh);border:1px solid var(--line);display:flex;flex-direction:column;page:cp}
 .cp .pgb{flex:1;padding-top:8mm}
 .cp p{margin:0 0 9px}
-.cp ol,.cp ul{margin:0 0 9px;padding-left:26px}.cp li{margin:0 0 6px;text-align:justify}.cp li li{margin-bottom:3px}
+.cp ol,.cp ul{margin:0 0 9px;padding-left:26px}.cp ol{list-style:none;counter-reset:cpn}.cp ol>li{counter-increment:cpn;position:relative}.cp ol>li::before{content:counter(cpn) ".";position:absolute;left:-24px;width:20px;text-align:left}.cp ol[type=a]>li::before{content:counter(cpn, lower-alpha) "."}.cp li{margin:0 0 6px;text-align:justify}.cp li li{margin-bottom:3px}
 .cp .cpx p,.cp .cpx li{text-align:justify}.cp .cpx p:first-child:has(br){text-align:left}
 .cph{width:calc(100% - 2px);border-collapse:collapse;font-size:12px}.cph td{border:1px solid #9fb3c8;padding:4px 7px;vertical-align:middle}
 .cph .cpl{width:23%;text-align:center}.cph .cpl img{height:40px}.cph .cpt{text-align:center;font-weight:700;font-size:14px}.cph .cpr{width:30%}.cph .cpr p{margin:1px 0}
@@ -1835,6 +1835,7 @@ async function docCompleto(id, fresco) {
     try { const r = await upd('cotizaciones', c.id, {doc}); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; $('cpSt').textContent = '✓ Textos guardados ' + new Date().toLocaleTimeString('es-CL').slice(0, 5); if (!silent) toast('Textos guardados'); }
     catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); $('cpSt').textContent = '⚠ No se pudo guardar: ' + e.message; }
   };
+  document.querySelectorAll('#cpDoc .cpx').forEach(el => el.onpaste = e => { e.preventDefault(); const t = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, t); });
   document.querySelectorAll('#cpDoc .cpx').forEach(el => el.oninput = () => { doc.txt[el.dataset.k] = el.innerHTML; $('cpSt').textContent = 'Cambios sin guardar…'; clearTimeout(cpTimer); cpTimer = setTimeout(() => guardarDoc(true), 1500); });
   document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { if (!confirm('¿Volver al texto automático? Se pierden los cambios que hizo a mano en este bloque.')) return; delete doc.txt[b.dataset.reset]; guardarDoc(true); docCompleto(id, true); });
   $('cpPl').onchange = () => { const hay = Object.keys(doc.txt).length; if (hay && !confirm('Cambiar la plantilla vuelve a generar los textos automáticos. Los bloques que corrigió a mano se mantienen. ¿Continuar?')) { $('cpPl').value = minera ? 'minera' : 'particular'; return; } doc.plantilla = $('cpPl').value; guardarDoc(true); docCompleto(id, true); };
