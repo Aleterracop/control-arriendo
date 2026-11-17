@@ -1127,7 +1127,7 @@ function vCot(id) {
   </div>`;
   renderItems();
   const bind = (id, k, f) => { $(id).oninput = $(id).onchange = () => { c[k] = f ? f($(id).value) : $(id).value; }; };
-  bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas'); bind('cFa', 'faena'); bind('cCo', 'atencion'); bind('cCc', 'atencion_cargo');
+  bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); $('cE').addEventListener('change', () => { if (c.estado !== 'perdida' || /Perdida:/i.test(c.notas || '')) return; const m = prompt('¿Por qué se perdió? (precio, plazo, otro proveedor, se canceló…)\nQueda en las notas internas y sirve para que la app aprenda qué precios funcionan.'); if (m) { c.notas = ((c.notas || '') + (c.notas ? ' · ' : '') + 'Perdida: ' + m.trim()).trim(); $('tIn').value = c.notas; } }); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas'); bind('cFa', 'faena'); bind('cCo', 'atencion'); bind('cCc', 'atencion_cargo');
   $('cV').oninput = () => { const v = num($('cV').value); c.validez_dias = v; if (v && /Validez de la oferta: \d+ días/.test(c.nota || '')) { c.nota = c.nota.replace(/Validez de la oferta: \d+ días/, `Validez de la oferta: ${v} días`); $('tNo').value = c.nota; } };
   $('cM').onchange = () => { c.mandante_id = $('cM').value || null; const m = byId('mandantes', c.mandante_id); c.cliente = m ? m.nombre : null;
     const u = ultimosDatosMandante(c.mandante_id, c.id); [['cFa', 'faena'], ['cCo', 'atencion'], ['cCc', 'atencion_cargo']].forEach(([id, k]) => { if (!c[k] && u[k]) { c[k] = u[k]; $(id).value = u[k]; } }); };
@@ -1212,7 +1212,65 @@ function updTot() {
     <div class="kpi g"><div class="l">Total con IVA</div><div class="v">${clp(t.total)}</div></div>
     ${verInternos ? `<div class="kpi o"><div class="l">Costo estimado</div><div class="v">${t.costo ? clp(t.costo) : '—'}</div></div>
     <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">Utilidad estimada</div><div class="v">${t.costo ? clp(t.util) + ' · ' + nf(t.margen * 100) + '%' : '—'}</div></div>` : ''}
-  </div>${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
+  </div>${verInternos ? precioUnicoHTML(c) : ''}${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
+  bindPrecioUnico();
+}
+/* ---------- Precio único para equipos iguales (propios y subarrendados) ---------- */
+const redUp = (v, m = 500) => Math.ceil(v / m) * m;
+const actualRef = its => Math.max(...its.map(x => +x.precio || 0));
+function gruposEquipos(c) {
+  const G = {};
+  (c.items || []).forEach((it, i) => { if (it.tipo !== 'i' || it.oculto || !it.equipo_tipo_id || it.costo == null || it.costo === '' || /moviliz/i.test(it.desc || '')) return;
+    const k = it.equipo_tipo_id + '|' + it.unidad; (G[k] = G[k] || []).push(i); });
+  return Object.values(G);
+}
+function referenciasMercado(T, u, conOp, excluirId) {
+  const pal = normTxt(T.nombre || '').split(/\s+/).filter(w => w.length > 2 || /\d/.test(w)).slice(0, 2), casa = d => { const n = normTxt(d); return pal.length && pal.every(w => n.includes(w)) && !(/retro/.test(n) && !pal.some(w => /retro/.test(w))); };
+  const tieneOp = it => it.meta && it.meta.op != null ? it.meta.op : (/operador/i.test(it.desc || '') || (it.apu || []).some(r => /operador|conductor/i.test(r.c || '')));
+  const adj = [];
+  D.cotizaciones.filter(c => c.id !== excluirId && c.estado === 'adjudicada' && !esPruebaCot(c)).forEach(c => (c.items || []).forEach(it => {
+    if (it.tipo === 'i' && !it.oculto && +it.precio && (it.unidad || '').toLowerCase() === u && (it.equipo_tipo_id === T.id || casa(it.desc)) && tieneOp(it) === conOp)
+      adj.push({precio: +it.precio, fecha: c.fecha, mand: c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '', origen: 'Cot. ' + nCot(c)}); }));
+  D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => { const f = byId('flota', a.flota_id), ua = {hora: 'hm', dia: 'día', mes: 'mes'}[a.modalidad];
+    if (+a.tarifa && ua === u && ((f && f.tipo_id === T.id) || casa(a.descripcion)) && !!a.operador === conOp && !adj.some(x => x.precio === +a.tarifa)) adj.push({precio: +a.tarifa, fecha: a.fecha_inicio, mand: mandante(a).nombre || '', origen: 'Arriendo ' + (a.cotizacion || '')}); });
+  adj.sort((x, y) => (y.fecha || '').localeCompare(x.fecha || ''));
+  const U = D.flota.filter(f => f.activo !== false && f.tipo_id === T.id), key = conOp ? 'tarifa_lista_operador' : 'tarifa_lista';
+  const vals = U.map(f => { const v = +f[key]; if (!v) return null; const uf = f.unidad_cobro === 'mes' ? 'mes' : 'hm'; if (uf === u) return v; const hm = P('horas_mes', 180); return uf === 'mes' && u === 'hm' ? v / hm : uf === 'hm' && u === 'mes' ? v * hm : null; }).filter(Boolean);
+  return {lista: vals.length ? Math.max(...vals) : null, adj: adj.slice(0, 3)};
+}
+function precioUnicoHTML(c) {
+  const meta = P('meta_ganancia_hora', 0), gg = +(c.gg ?? 0), ut = +(c.utilidad ?? P('utilidad', 0.2));
+  const html = gruposEquipos(c).map(ix => {
+    const its = ix.map(i => c.items[i]), sub = its.some(x => x.proveedor);
+    const T = byId('equipo_tipos', its[0].equipo_tipo_id) || {}, u = its[0].unidad, caro = its.reduce((a, b) => (+b.costo > +a.costo ? b : a));
+    const maxC = +caro.costo, sug = meta ? redUp(maxC + meta) : redUp(maxC * (1 + gg) * (1 + ut));
+    const conOp = its.some(x => x.meta && x.meta.op != null ? x.meta.op : (/operador/i.test(x.desc || '') || (x.apu || []).some(r => /operador|conductor/i.test(r.c || ''))));
+    const R = referenciasMercado(T, u, conOp, c.id), ult = R.adj[0], refs = [R.lista, ult && ult.precio].filter(Boolean);
+    const mercado = refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : null;
+    let reco = sug, nota = 'Sin precios de referencia (lista o adjudicados) para este equipo: se recomienda el mínimo.';
+    if (mercado) {
+      if (sug > (R.lista || mercado) * 1.03) { reco = sug; nota = `⚠ Su mínimo queda <b>sobre</b> ${R.lista ? 'la lista' : 'lo adjudicado antes'}: con estos costos el precio es alto para el mercado. Revise costos o meta, o prepárese para negociar.`; }
+      else { reco = Math.max(sug, redUp(mercado, 1000)); nota = reco > sug ? `Hay espacio para cobrar más: el mercado ya le ha pagado cerca de ${clp(mercado)}.` : 'Su mínimo coincide con el mercado.'; }
+    }
+    const rango = `<div style="margin-top:4px">📊 <b>Rango:</b> mínimo ${clp(sug)}${ult ? ` · último adjudicado ${clp(ult.precio)} (${esc(ult.mand)}, ${fd(ult.fecha)})` : ''}${R.lista ? ` · lista ${conOp ? 'con operador' : 'sin operador'} ${clp(R.lista)}` : ''} → <b>recomendado ${clp(reco)}/${esc(u)}</b>. ${nota}${actualRef(its) > (R.lista || Infinity) * 1.05 ? ' <b style="color:var(--orange)">Su precio actual está sobre la lista: puede costar adjudicarse.</b>' : ''}</div>`;
+    if (its.length < 2 && !sub && !mercado) return '';
+    const precios = [...new Set(its.map(x => +x.precio || 0))], iguales = precios.length === 1, actual = precios[0];
+    const gan = p => its.map(x => `${esc(x.item)}${x.proveedor ? ' (' + esc(x.proveedor) + ')' : ''}: <b>${clp(p - x.costo)}</b>/${esc(u)}`).join(' · ');
+    return `<div class="msg ${iguales && actual >= sug ? 'ok' : 'info'} small" style="margin:8px 0 0">
+      🚜 <b>${esc(T.nombre || 'Equipo')}</b> (${its.map(x => esc(x.item)).join(', ')}): el costo más alto es ${clp(maxC)}/${esc(u)} en ${esc(caro.item)}${caro.proveedor ? ' (' + esc(caro.proveedor) + ')' : ''}.
+      <b>Precio único sugerido: ${clp(sug)}/${esc(u)}</b> ${meta ? `(para ganar al menos ${clp(meta)} por ${esc(u)} en cada equipo)` : `(${nf(ut * 100)}% de utilidad sobre el de mayor costo)`} → ${gan(sug)}.
+      ${its.length > 1 && !iguales ? '<br><b style="color:var(--red)">⚠ Hoy tienen precios distintos: el cliente lo va a notar.</b>' : `<br>Precio actual ${clp(actual)} → ${gan(actual)}.`}
+      ${iguales && actual >= sug ? ' <b style="color:var(--green)">✓ Su precio cubre la meta.</b>' : ''}${rango}
+      <div class="row" style="gap:6px;margin-top:6px">${actual !== sug || !iguales ? `<button class="sm" data-pu="${ix.join(',')}" data-pv="${sug}">Aplicar mínimo ${clp(sug)}</button>` : ''}${reco !== sug && (actual !== reco || !iguales) ? `<button class="sm pri" data-pu="${ix.join(',')}" data-pv="${reco}">Aplicar recomendado ${clp(reco)}</button>` : ''}</div></div>`;
+  }).join('');
+  if (!html) return '';
+  return `${html}<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por ${'hora'} en cada equipo ($):</span><input id="metaG" inputmode="numeric" value="${meta || ''}" placeholder="vacío = usa la utilidad %" style="width:180px"><span class="muted">Se guarda para las próximas cotizaciones.</span></div>`;
+}
+function bindPrecioUnico() {
+  document.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const v = +b.dataset.pv; b.dataset.pu.split(',').forEach(i => { COT.items[+i].precio = v; }); renderItems(); toast(`Precio ${clp(v)} aplicado · recuerde Guardar`); });
+  const m = $('metaG'); if (m) m.onchange = async () => { const v = num(m.value) || 0, now = new Date().toISOString();
+    try { await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([{clave: 'meta_ganancia_hora', valor: v, descripcion: 'Meta de ganancia por hora (o unidad) en cada equipo, para el precio único', actualizado: now}])});
+      const pp = D.parametros.find(x => x.clave === 'meta_ganancia_hora'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); else D.parametros.push({clave: 'meta_ganancia_hora', valor: v}); D.P.meta_ganancia_hora = v; updTot(); } catch (e) { alert(e.message); } };
 }
 async function saveCot(silent) {
   const c = COT;
