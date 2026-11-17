@@ -145,7 +145,8 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 .cpreset{float:right;margin:-4px 0 4px 8px}
 .cpchk{margin:0;padding-left:4px;list-style:none;font-size:13px}.cpchk li{padding:3px 0;border-bottom:1px dashed var(--line)}.cpchk li.red{color:#b3261e}.cpchk li.orange{color:#9a5b00}
 @page cp{size:letter;margin:10mm 14mm}
-@media print{.cpwrap{overflow:visible;padding:0}.cp .pg{width:auto;min-height:258mm;margin:0;padding:0;border:none;box-shadow:none;break-after:page}.cp .pg:last-child{break-after:auto}.cp [data-v]{border-bottom:none}.cp .cpfal{background:none}.cpx:hover,.cpx:focus{box-shadow:none;background:none}body.printcp main{max-width:none}}
+mark.cpfal{background:#fff3b8;color:inherit}
+@media print{mark.cpfal{background:none}.cpwrap{overflow:visible;padding:0}.cp .pg{width:auto;min-height:258mm;margin:0;padding:0;border:none;box-shadow:none;break-after:page}.cp .pg:last-child{break-after:auto}.cp [data-v]{border-bottom:none}.cp .cpfal{background:none}.cpx:hover,.cpx:focus{box-shadow:none;background:none}body.printcp main{max-width:none}}
 .ofwrap{overflow-x:auto;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:6px}
 a.btn{display:inline-block}
 </style>
@@ -370,8 +371,15 @@ function alertas() {
 }
 
 /* ---------------- Navegación ---------------- */
-function go() {
+const CAMPOS_COT = ['numero', 'rev', 'fecha', 'mandante_id', 'referencia', 'nota', 'validez_dias', 'items', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', 'faena'];
+const cotSucia = () => { if (!COT) return false; const src = byId('cotizaciones', COT.id); if (!src) return false; return CAMPOS_COT.some(k => JSON.stringify(COT[k] ?? null) !== JSON.stringify(src[k] ?? null)); };
+let lastHash = '';
+async function go() {
   const h = (location.hash || '#inicio').slice(1);
+  if (lastHash.startsWith('c-') && h !== lastHash && cotSucia()) {
+    if (confirm('La cotización tiene cambios sin guardar (precios, cantidades u otros datos).\n\nAceptar = Guardar los cambios\nCancelar = Descartarlos')) await saveCot(true); else COT = null;
+  }
+  lastHash = h;
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^c[dp]?-/.test(h) && a.dataset.v === 'cotizar')));
   const v = $('view');
   try {
@@ -1210,7 +1218,7 @@ async function saveCot(silent) {
   const c = COT;
   if (!c.numero) { alert('Falta el N° de cotización.'); return false; }
   if (D.cotizaciones.some(x => x.id !== c.id && x.numero === c.numero && x.rev === c.rev)) { alert(`Ya existe la cotización ${c.numero} rev_${c.rev}.`); return false; }
-  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', ...(D.hasDoc ? ['faena', 'doc'] : [])]
+  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', ...(D.hasDoc ? ['faena'] : [])]
     .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
   o.actualizado = new Date().toISOString();
   if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
@@ -1611,8 +1619,9 @@ function datosServicio(c) {
     if (it.unidad === 'día' || it.unidad === 'mes') uDia = it.unidad;
   });
   const mov = its.some(i => /moviliz/i.test(i.desc || '')) || (c.items || []).some(i => i.tipo === 'g' && /moviliz/i.test(i.desc || '') && its.some(x => String(x.item || '').startsWith(i.item + '.')));
-  const lista = Object.values(grupos);
-  return {lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov};
+  const lista = Object.values(grupos), CAM = /camioneta|veh[ií]culo|4x4/i;
+  const cam = (c.items || []).some(i => i.tipo === 'i' && (CAM.test(i.desc || '') || (i.apu || []).some(r => CAM.test(r.c || ''))));
+  return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov};
 }
 const TURNOTXT = {libre: 'en jornada diurna con horario libre', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
 /* valores que se actualizan solos dentro de los textos (span data-v) */
@@ -1642,7 +1651,9 @@ function textosBase(c, S, minera) {
   if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día (sin sistema supresor de incendio automático o semiautomático).</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
   al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
-  if (S.op) al.push(S.al === 'terracop' ? 'Se considera la alimentación, el alojamiento y el traslado de los operadores hasta el área de trabajo, por cuenta de Terracop.' : 'Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
+  if (S.op && S.al === 'terracop') al.push(S.cam ? 'Se considera la alimentación y el alojamiento de los operadores, por cuenta de Terracop.' : 'Se considera la alimentación, el alojamiento y el traslado de los operadores hasta el área de trabajo, por cuenta de Terracop.');
+  if (S.cam) al.push(`Se considera como alcance del servicio el aporte de Terracop de un vehículo 4x4 equipado para las labores en cuestión, para el traslado del personal desde <mark class="cpfal">[lugar de origen]</mark> hasta ${V('faena')}.`);
+  else if (S.op && S.al !== 'terracop') al.push('Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
   if (S.mov) al.push(`Se considera la movilización y desmovilización de los equipos hasta ${V('faena')}.`);
   al.push('Se considera disponibilidad de los equipos previa coordinación del inicio del servicio con el mandante.');
   T.alcance = `<p>De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el siguiente alcance de servicio:</p><ol type="a">${al.map(x => `<li>${x}</li>`).join('')}</ol>`;
@@ -1701,6 +1712,8 @@ function chequeoEnvio(c, S, minera) {
     if (i.costo_uf) add('info', `<b>${esc(i.item)}</b>: subarrendado a ${esc(i.proveedor || 'proveedor')} a ${nf(i.costo_uf, 2)} UF. Confirme el valor con el proveedor.`); });
   const porTipo = {}; vis.filter(i => i.equipo_tipo_id).forEach(i => { (porTipo[i.equipo_tipo_id + i.unidad] = porTipo[i.equipo_tipo_id + i.unidad] || new Set()).add(+i.precio); });
   if (Object.values(porTipo).some(st => st.size > 1)) add('orange', 'Hay <b>equipos iguales con precios distintos</b>: el cliente lo va a notar.');
+  if (S.op && !S.cam) add('orange', 'No hay <b>camioneta / vehículo</b> en los costos. Si la ponen ustedes, agréguela en el 🧮 de cada equipo (línea libre "Camioneta traslado operadores · día"). No sale como ítem en la oferta.');
+  const alc = ((c.doc || {}).txt || {}).alcance; if (alc != null ? /\[lugar de origen\]/.test(alc) : S.cam) add('orange', 'En el alcance falta escribir el <b>lugar de origen</b> del traslado del personal (texto en amarillo, página 3).');
   if (!S.dias && S.lista.length) add('orange', 'No se pudo saber los <b>días de arriendo</b>: revise el alcance (página 3).');
   if (!AJ('firma')) add('orange', 'No hay <b>firma</b> guardada (Catálogo → Empresa y firma).');
   if (c.fecha && c.fecha !== todayISO() && c.estado === 'borrador') add('info', `La fecha de la cotización es ${fd(c.fecha)} (no es hoy).`);
@@ -1708,7 +1721,11 @@ function chequeoEnvio(c, S, minera) {
   return L;
 }
 let CP = null, cpTimer = null;
-function docCompleto(id) {
+async function docCompleto(id, fresco) {
+  if (!fresco) {   // siempre trae la versión guardada más reciente (por si se editó en otra pestaña o equipo)
+    try { const r = await api(`cotizaciones?id=eq.${id}&select=*`), f = (r || []).find(x => x.id === id); if (f) { const i = D.cotizaciones.findIndex(x => x.id === id); if (i >= 0) D.cotizaciones[i] = f; else D.cotizaciones.push(f); if (CP && CP.id === id) CP.doc = JSON.parse(JSON.stringify(f.doc || CP.doc || {})); } }
+    catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); }
+  }
   const c = byId('cotizaciones', id); if (!c) { $('view').innerHTML = '<div class="msg err">Cotización no encontrada.</div>'; return; }
   if (!CP || CP.id !== id) CP = {id, doc: JSON.parse(JSON.stringify(c.doc || {}))};
   const doc = CP.doc; doc.txt = doc.txt || {};
@@ -1734,6 +1751,9 @@ function docCompleto(id) {
     ${CHK.length ? `<ul class="cpchk">${CHK.map(x => `<li class="${x.lv}">${x.lv === 'red' ? '⛔' : x.lv === 'orange' ? '⚠️' : 'ℹ️'} ${x.t}</li>`).join('')}</ul>` : '<div class="msg ok small" style="margin:0">Todo en orden: datos del mandante completos, precios y costos ingresados.</div>'}
     <div class="row small" style="margin-top:8px;gap:8px"><span>Total neto: <b>${clp(t.neto)}</b>${verInternos && t.costo ? ` · Utilidad: <b>${clp(t.util)}</b> (${nf(t.util / (t.neto || 1) * 100)}%)` : ''} · Estado: ${estCot(c.estado)}</span><span class="sp"></span>
     <a class="btn sm" href="#c-${c.id}" style="text-decoration:none">✏️ Corregir en la cotización</a>${c.estado === 'borrador' ? '<button class="sm" id="cpEnv">📨 Marcar como Enviada</button>' : ''}</div>
+    ${verInternos ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:600">🔒 Costos internos de cada ítem (solo usted los ve, no salen en la oferta)</summary><div class="tw" style="margin-top:6px"><table><thead><tr><th>Ítem</th><th>Costo</th><th class="n">Cantidad</th><th class="n">Unitario</th><th class="n">Total</th></tr></thead><tbody>
+      ${(c.items || []).filter(i => i.tipo === 'i').map(i => (i.apu && i.apu.length ? i.apu : [{c: i.desc, u: i.unidad, q: i.cantidad, p: i.costo}]).map((r, k) => `<tr${/camioneta|veh[ií]culo|4x4/i.test(r.c || '') ? ' style="background:#fff8e1"' : ''}><td>${k ? '' : `<b>${esc(i.item)}</b>${i.oculto ? ' <span class="chip">oculto</span>' : ''}`}</td><td class="small">${esc(r.c || '')}</td><td class="n">${nf(r.q, 1)} ${esc(r.u || '')}</td><td class="n">${clp(r.p)}</td><td class="n">${clp((+r.q || 0) * (+r.p || 0))}</td></tr>`).join('')).join('')}
+      </tbody></table></div></details>` : ''}
     <div class="small muted" style="margin-top:6px">Lea también los textos de abajo: el corrector marca en rojo las palabras mal escritas.</div></div>`;
   $('view').innerHTML = `
   <div class="row noprint" style="margin-bottom:10px"><a href="#c-${c.id}">← Volver a editar la cotización</a></div>
@@ -1757,16 +1777,16 @@ function docCompleto(id) {
     catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); $('cpSt').textContent = '⚠ No se pudo guardar: ' + e.message; }
   };
   document.querySelectorAll('#cpDoc .cpx').forEach(el => el.oninput = () => { doc.txt[el.dataset.k] = el.innerHTML; $('cpSt').textContent = 'Cambios sin guardar…'; clearTimeout(cpTimer); cpTimer = setTimeout(() => guardarDoc(true), 1500); });
-  document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { if (!confirm('¿Volver al texto automático? Se pierden los cambios que hizo a mano en este bloque.')) return; delete doc.txt[b.dataset.reset]; guardarDoc(true); docCompleto(id); });
-  $('cpPl').onchange = () => { const hay = Object.keys(doc.txt).length; if (hay && !confirm('Cambiar la plantilla vuelve a generar los textos automáticos. Los bloques que corrigió a mano se mantienen. ¿Continuar?')) { $('cpPl').value = minera ? 'minera' : 'particular'; return; } doc.plantilla = $('cpPl').value; guardarDoc(true); docCompleto(id); };
-  $('cpAg').onchange = () => { doc.agrupar = $('cpAg').checked; guardarDoc(true); docCompleto(id); };
+  document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { if (!confirm('¿Volver al texto automático? Se pierden los cambios que hizo a mano en este bloque.')) return; delete doc.txt[b.dataset.reset]; guardarDoc(true); docCompleto(id, true); });
+  $('cpPl').onchange = () => { const hay = Object.keys(doc.txt).length; if (hay && !confirm('Cambiar la plantilla vuelve a generar los textos automáticos. Los bloques que corrigió a mano se mantienen. ¿Continuar?')) { $('cpPl').value = minera ? 'minera' : 'particular'; return; } doc.plantilla = $('cpPl').value; guardarDoc(true); docCompleto(id, true); };
+  $('cpAg').onchange = () => { doc.agrupar = $('cpAg').checked; guardarDoc(true); docCompleto(id, true); };
   $('cpSave').onclick = () => guardarDoc(false);
   document.querySelectorAll('[data-fmt]').forEach(bt => { bt.onmousedown = e => e.preventDefault(); bt.onclick = () => {
     const sel = getSelection(), n = sel.rangeCount ? sel.getRangeAt(0).commonAncestorContainer : null, ed = n && (n.nodeType === 1 ? n : n.parentElement).closest('.cpx');
     if (!ed) return toast('Primero toque o seleccione el texto que quiere cambiar');
     document.execCommand(bt.dataset.fmt, false, null); ed.dispatchEvent(new Event('input')); }; });
   const okRojo = () => !nRojo || confirm(`Hay ${nRojo} punto(s) en rojo en la revisión. ¿Generar el documento igual?`);
-  if ($('cpEnv')) $('cpEnv').onclick = () => { if (!okRojo()) return; if (!confirm('¿Marcar la cotización como Enviada (hoy)?')) return; guardar(async () => { const r = await upd('cotizaciones', c.id, {estado: 'enviada', fecha_envio: c.fecha_envio || todayISO()}); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; if (COT && COT.id === c.id) COT = null; docCompleto(id); }, 'Cotización marcada como Enviada'); };
+  if ($('cpEnv')) $('cpEnv').onclick = () => { if (!okRojo()) return; if (!confirm('¿Marcar la cotización como Enviada (hoy)?')) return; guardar(async () => { const r = await upd('cotizaciones', c.id, {estado: 'enviada', fecha_envio: c.fecha_envio || todayISO()}); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; if (COT && COT.id === c.id) COT = null; docCompleto(id, true); }, 'Cotización marcada como Enviada'); };
   $('cpPdf').onclick = () => { if (!okRojo()) return; const tt = document.title; document.title = fname; document.body.classList.add('printcp'); window.print(); setTimeout(() => { document.title = tt; document.body.classList.remove('printcp'); }, 1000); };
   $('cpWord').onclick = async () => { if (!okRojo()) return; try { const b = await docxDesdeHTML($('cpDoc')), a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = fname + '.docx'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 3000); } catch (e) { alert('No se pudo generar el Word: ' + e.message); } };
 }
