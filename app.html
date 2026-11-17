@@ -1376,12 +1376,12 @@ function asistenteEquipo() {
   modal(`<h3>Agregar equipo a la cotización</h3>
   <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
   <div class="f">
-    <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => `${t.nombre} · ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin precio'}`, '— Elegir —')}</select></div>
+    <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => { const L = D.flota.filter(f => f.tipo_id === t.id && +f.tarifa_lista).map(f => +f.tarifa_lista); return `${t.nombre} · costo interno ${t.tarifa ? clp(t.tarifa) + '/' + t.unidad : 'sin costo'}${/provisori/i.test(t.notas || '') ? ' (provisorio)' : ''}${L.length ? ' · lista ' + clp(Math.max(...L)) : ''}`; }, '— Elegir —')}</select></div>
     <div><label>Origen del equipo</label><select id="wOr"><option value="propio">Propio Terracop</option><option value="sub">Subarrendado a proveedor</option></select></div>
     <div id="wPeW" hidden><label>Equipo del proveedor (catálogo)</label><select id="wPe"><option value="">— Escribir a mano —</option></select></div>
     <div id="wProvW" hidden><label>Proveedor</label><input id="wProv" placeholder="Ej. Rental, Finning…"></div>
     <div id="wUfW" hidden><label>Valor UF de hoy ($)</label><input id="wUfv" inputmode="decimal" value="${P('uf', 40000)}"></div>
-    <div><label>Costo equipo por unidad</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input id="wTa" inputmode="decimal" placeholder="del catálogo"><select id="wMon" style="width:auto"><option value="$">$</option><option value="UF">UF</option></select></div></div>
+    <div><label>Costo interno del equipo por unidad (no es la tarifa al cliente)</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input id="wTa" inputmode="decimal" placeholder="del catálogo"><select id="wMon" style="width:auto"><option value="$">$</option><option value="UF">UF</option></select></div></div>
     <div><label>Cobro por</label><select id="wU"><option value="hm">Hora máquina (hm)</option><option value="día">Día</option><option value="mes">Mes</option></select></div>
     <div><label id="wQl">Cantidad a cotizar (horas)</label><input id="wQ" inputmode="decimal" value="180"></div>
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
