@@ -1235,8 +1235,8 @@ function updTot() {
     <div class="kpi"><div class="l">IVA ${nf(P('iva', 0.19) * 100)}%</div><div class="v">${clp(t.iva)}</div></div>
     <div class="kpi g"><div class="l">Total con IVA</div><div class="v">${clp(t.total)}</div></div>
     ${verInternos ? `<div class="kpi o"><div class="l">Costo estimado</div><div class="v">${t.costo ? clp(t.costo) : '—'}</div></div>
-    <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">${maqP ? 'Utilidad sobre tarifa máquina' : 'Utilidad estimada'}</div><div class="v">${t.costo ? clp(t.util) + ' · ' + nf(t.margen * 100) + '%' : '—'}</div></div>
-    ${maqP ? `<div class="kpi g"><div class="l">Margen directo (equipo propio)</div><div class="v">${clp(t.util + maqP)} · ${nf((t.util + maqP) / (t.neto || 1) * 100)}%</div></div>` : ''}` : ''}
+    <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">${maqP ? 'Utilidad sobre tarifa máquina' : 'Utilidad estimada'}</div><div class="v" style="white-space:normal">${t.costo ? clp(t.util) + ' <span style="font-size:.75em">· ' + nf(t.margen * 100) + '%</span>' : '—'}</div></div>
+    ${maqP ? `<div class="kpi g"><div class="l">Margen directo (equipo propio)</div><div class="v" style="white-space:normal">${clp(t.util + maqP)} <span style="font-size:.75em">· ${nf((t.util + maqP) / (t.neto || 1) * 100)}%</span></div></div>` : ''}` : ''}
   </div>${verInternos ? gananciaEquiposHTML(c) : ''}${verInternos && maqP ? `<div class="small muted" style="margin-top:6px">🔎 <b>Cómo leer la utilidad:</b> en los equipos propios la app cuenta como costo la <b>Tarifa Máquina</b> de la planilla (${clp(maqP)} en esta cotización). <b>Utilidad sobre tarifa máquina</b> = lo que se gana además de esa tarifa. <b>Margen directo</b> = venta menos lo que realmente se paga (operador, alimentación, camioneta, Rental, fletes…), sin descontar la máquina propia: de ahí salen su mantención, desgaste y la ganancia de Terracop. Cuando el taller entregue el costo real por hora, se carga en Catálogo → Equipos y ambos números se ajustan.</div>` : ''}${verInternos ? precioUnicoHTML(c) : ''}${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
   bindPrecioUnico();
 }
@@ -2048,7 +2048,8 @@ async function setAjuste(clave, valor) {
 
 /* ---------------- Calculadora flotante: pinchar montos y sumar / restar / multiplicar / dividir ---------------- */
 const CALC = new Map(); let calcOpen = true, calcOp = '+', calcModo = false, calcSeq = 0;
-const parseCel = t => { t = (t || '').trim().split('\n')[0]; if (!t || /[\/·%]/.test(t) && !/^-?\$/.test(t)) return null; const neg = /^-/.test(t); const m = t.replace(/[^\d.,]/g, ''); if (!m) return null;
+const parseCel = t => { t = (t || '').trim().split('\n')[0]; if (!t || /[\/·%]/.test(t) && !/^-?\s*\$/.test(t)) return null; const neg = /^-/.test(t);
+  const m = (t.match(/\d[\d.]*(,\d+)?/) || [])[0]; if (!m) return null;   // solo el primer número (ej. "$ 18.348.024 · 96%" → 18.348.024)
   const v = +m.replace(/\./g, '').replace(',', '.'); return isFinite(v) ? (neg ? -v : v) : null; };
 const CSEL = '#view td.n, #view .kpi .v, #mbox td.n, #mbox .kpi .v';
 function celInfo(el) {
