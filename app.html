@@ -124,6 +124,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 #calc.mini{left:auto;min-width:0;opacity:.9}
 @media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
+.gbars{display:flex;gap:10px;align-items:flex-end;height:170px;padding:4px 2px 0}.gb{flex:1;text-align:center;min-width:40px}.gbb{height:130px;display:flex;gap:3px;align-items:flex-end;justify-content:center}.gbb div{width:42%;border-radius:4px 4px 0 0;min-height:1px}
 .cpwrap{overflow-x:auto;padding:4px 0 20px}
 .cptool{position:sticky;top:6px;z-index:25;padding:10px 14px;box-shadow:0 6px 18px rgba(20,60,110,.18)}
 .cp{font-family:Calibri,Arial,sans-serif;color:#1b2430;font-size:14.5px;line-height:1.35}
@@ -160,6 +161,7 @@ a.btn{display:inline-block}
   <nav id="nav" hidden>
     <a href="#inicio" data-v="inicio">🔔 Inicio<span class="cnt" id="ncnt" hidden></span></a>
     <a href="#cotizar" data-v="cotizar">📝 Cotizar</a>
+    <a href="#gestion" data-v="gestion">📊 Gestión</a>
     <a href="#arriendos" data-v="arriendos">🚜 Arriendos</a>
     <a href="#flota" data-v="flota">🏗️ Flota</a>
     <a href="#catalogo" data-v="catalogo">💲 Catálogo</a>
@@ -247,6 +249,7 @@ async function loadAll() {
   try { const [c, a] = await Promise.all([api('cotizaciones?select=*&limit=10000'), api('ajustes?select=*')]); D.cotizaciones = c || []; D.ajustesMap = {}; (a || []).forEach(x => { D.ajustesMap[x.clave] = x.valor; }); D.sinCot = false; }
   catch (e) { if (e.message === 'SESSION') throw e; D.cotizaciones = []; D.ajustesMap = {}; D.sinCot = true; }
   try { D.proveedor_equipos = await api('proveedor_equipos?select=*') || []; D.sinProv = false; } catch (e) { if (e.message === 'SESSION') throw e; D.proveedor_equipos = []; D.sinProv = true; }
+  try { D.licitaciones = await api('licitaciones?select=*&limit=10000') || []; D.sinLic = false; } catch (e) { if (e.message === 'SESSION') throw e; D.licitaciones = []; D.sinLic = true; }
   D.P = {}; D.parametros.forEach(p => { D.P[p.clave] = +p.valor; });
   D.hasConteo = D.arriendos.some(a => 'conteo_dias' in a);
   D.hasEstado = D.horometros.some(h => 'estado' in h);
@@ -389,7 +392,7 @@ async function go() {
     if (h.startsWith('cd-')) return docCot(h.slice(3));
     if (h.startsWith('cp-')) return docCompleto(h.slice(3));
     if (h.startsWith('c-')) return vCot(h.slice(2));
-    ({inicio: vInicio, cotizar: vCotizaciones, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
+    ({inicio: vInicio, cotizar: vCotizaciones, gestion: vGestion, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   const n = alertas().filter(x => x.lv === 'red' || x.lv === 'orange').length;
   $('ncnt').hidden = !n; $('ncnt').textContent = n;
@@ -1346,7 +1349,8 @@ async function saveCot(silent) {
     .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
   o.actualizado = new Date().toISOString();
   if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
-  try { const r = await upd('cotizaciones', c.id, o); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; const rv = c._revisado; COT = JSON.parse(JSON.stringify(r)); COT._revisado = rv; if (!silent) toast('Cotización guardada'); return true; }
+  if (o.estado === 'adjudicada' && D.cotizaciones.some(x => 'fecha_adjudicacion' in x) && !c.fecha_adjudicacion) o.fecha_adjudicacion = todayISO();
+  try { const r = await upd('cotizaciones', c.id, o); syncLic(r); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; const rv = c._revisado; COT = JSON.parse(JSON.stringify(r)); COT._revisado = rv; if (!silent) toast('Cotización guardada'); return true; }
   catch (e) { if (e.message === 'SESSION') { showLogin('Su sesión expiró.'); return false; } alert(e.message); return false; }
 }
 function copiaCot(numero, rev) {
@@ -1637,7 +1641,7 @@ function pasarArriendo() {
       return guardar(async () => {
         await ins('periodos', {arriendo_id: a.id, n, tipo: 'prorroga', cantidad: it.cantidad, tarifa: it.precio, desde, hasta, estado: oc ? 'con_oc' : 'palabra', oc: oc || null, notas: 'Cotización ' + nCot(c)});
         await upd('arriendos', a.id, {fecha_fin: hasta, ...(+it.precio && +it.precio !== +a.tarifa ? {tarifa: it.precio} : {})});
-        await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: a.id});
+        { const fa = D.cotizaciones.some(x => 'fecha_adjudicacion' in x) ? {fecha_adjudicacion: c.fecha_adjudicacion || todayISO()} : {}; const rc = await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: a.id, ...fa}); syncLic(rc || {...c, estado: 'adjudicada'}); }
         COT = null; location.hash = 'a-' + a.id;
       }, `Prórroga ${n} agregada al arriendo`);
     }
@@ -1651,7 +1655,7 @@ function pasarArriendo() {
     guardar(async () => {
       const r = await ins('arriendos', o);
       await ins('periodos', {arriendo_id: r.id, n: 1, tipo: 'inicial', cantidad: o.base_cobro, tarifa: o.tarifa, desde: o.fecha_inicio, hasta: o.fecha_fin, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
-      await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: r.id});
+      { const fa = D.cotizaciones.some(x => 'fecha_adjudicacion' in x) ? {fecha_adjudicacion: c.fecha_adjudicacion || todayISO()} : {}; const rc = await upd('cotizaciones', c.id, {estado: 'adjudicada', arriendo_id: r.id, ...fa}); syncLic(rc || {...c, estado: 'adjudicada'}); }
       COT = null; location.hash = 'a-' + r.id;
     }, 'Arriendo creado desde la cotización');
   };
@@ -2007,6 +2011,148 @@ async function docxDesdeHTML(root) {
   };
   media.forEach(m => { files['word/' + m.name] = m.data; });
   return zipStore(files, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+
+/* ---------- Registro comercial (licitaciones y ofertas) e indicadores de gestión ---------- */
+const LEST = {en_estudio: 'En estudio', en_aprobacion: 'En aprobación jefatura', enviada: 'Oferta enviada', en_pausa: 'Enviada · en pausa', adjudicada: 'Adjudicada', no_adjudicada: 'No adjudicada', desistida: 'Desistida', descartada: 'Descartada por mandante'};
+const LCOL = {en_estudio: '#6b7a90', en_aprobacion: '#9a5b00', enviada: '#1f6fc5', en_pausa: '#7a8fb0', adjudicada: '#1e8e3e', no_adjudicada: '#b3261e', desistida: '#8a8a8a', descartada: '#8a8a8a'};
+const estLic = e => `<span class="chip" style="background:${LCOL[e] || '#888'}1f;color:${LCOL[e] || '#555'};border:1px solid ${LCOL[e] || '#888'}55">${LEST[e] || e}</span>`;
+const mesDe = d => d ? String(d).slice(0, 7) : '';
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+const mesTxt = m => m ? `${MESES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}` : '';
+const montoAdj = l => +(l.monto_total || l.monto_adjudicado || l.monto_oferta || 0);
+const esPruebaLic = l => /prueba/i.test([l.proyecto, l.mandante, l.notas].join(' '));
+/* la cotización de la app se registra / actualiza sola en el registro comercial */
+async function syncLic(c) {
+  if (D.sinLic || !c || esPruebaCot(c) || !['enviada', 'adjudicada', 'perdida'].includes(c.estado)) return;
+  const t = totCot(c), est = {enviada: 'enviada', adjudicada: 'adjudicada', perdida: 'no_adjudicada'}[c.estado], m = byId('mandantes', c.mandante_id) || {};
+  const ex = D.licitaciones.find(l => String(l.codigo || '') === String(c.numero));
+  const arr = (c.items || []).some(i => i.tipo === 'i' && i.equipo_tipo_id);
+  const o = {estado: est, monto_oferta: t.neto || null, fecha_envio: c.fecha_envio || (ex && ex.fecha_envio) || c.fecha, actualizado: new Date().toISOString()};
+  if (est === 'adjudicada') { o.fecha_adjudicacion = (ex && ex.fecha_adjudicacion) || c.fecha_adjudicacion || todayISO(); if (!ex || !ex.monto_adjudicado) o.monto_adjudicado = t.neto || null; if (!ex || !ex.monto_total) o.monto_total = t.neto || null; }
+  if (est === 'no_adjudicada' && /Perdida:/i.test(c.notas || '') && (!ex || !ex.motivo)) o.motivo = (c.notas.match(/Perdida:\s*([^·]+)/i) || [])[1] || null;
+  try {
+    if (ex) { const r = await upd('licitaciones', ex.id, o); Object.assign(ex, r || o); }
+    else { const r = await ins('licitaciones', {...o, codigo: String(c.numero), mandante: m.nombre || c.cliente || null, proyecto: c.referencia || null, tipo_servicio: arr ? 'Arriendo de maquinaria' : 'Servicio', unidad: 'Terracop', responsable: 'Alejandro Osorio', es_arriendo: arr, fecha_inicio: c.fecha, origen: 'app'}); if (r) D.licitaciones.push(r); }
+  } catch (e) { if (e.message === 'SESSION') throw e; console.warn('syncLic', e); }
+}
+let GF = {per: 'mes', un: '', resp: '', tipo: '', est: 'abiertas', q: ''};
+function filtroLic(L) {
+  return L.filter(l => !esPruebaLic(l) && (!GF.un || (l.unidad || 'Terracop') === GF.un) && (!GF.resp || (l.responsable || '—') === GF.resp)
+    && (!GF.tipo || (GF.tipo === 'arr' ? l.es_arriendo : !l.es_arriendo)));
+}
+function enPeriodo(d) {
+  if (GF.per === 'todo') return true;
+  if (!d) return false; const m = mesDe(d), hoy = todayISO();
+  if (GF.per === 'mes') return m === mesDe(hoy);
+  if (GF.per === 'anio') return m.slice(0, 4) === hoy.slice(0, 4);
+  if (GF.per === 'todo') return true;
+  return m === GF.per;
+}
+function kpisGestion(L) {
+  const adj = L.filter(l => l.estado === 'adjudicada' && enPeriodo(l.fecha_adjudicacion || l.fecha_envio));
+  const env = L.filter(l => ['enviada', 'en_pausa', 'adjudicada', 'no_adjudicada', 'descartada'].includes(l.estado) && enPeriodo(l.fecha_envio || l.fecha_inicio) && +l.monto_oferta);
+  const espera = L.filter(l => l.estado === 'enviada'), pausa = L.filter(l => l.estado === 'en_pausa');
+  const resueltas = L.filter(l => ['adjudicada', 'no_adjudicada', 'descartada'].includes(l.estado) && enPeriodo(l.fecha_adjudicacion || l.fecha_envio || l.fecha_inicio));
+  const ganadas = resueltas.filter(l => l.estado === 'adjudicada');
+  const sum = (a, f) => a.reduce((s, x) => s + (f(x) || 0), 0);
+  return {adj, env, espera, pausa, resueltas, ganadas, sum,
+    vendido: sum(adj, montoAdj), vendBase: sum(adj, l => +(l.monto_adjudicado || l.monto_oferta || 0)),
+    tasaN: resueltas.length ? ganadas.length / resueltas.length : null,
+    tasaM: sum(resueltas, l => +(l.monto_oferta || l.monto_adjudicado || 0)) ? sum(ganadas, l => +(l.monto_adjudicado || l.monto_oferta || 0)) / sum(resueltas, l => +(l.monto_oferta || l.monto_adjudicado || 0)) : null,
+    curso: L.filter(l => ['en_estudio', 'en_aprobacion'].includes(l.estado))};
+}
+function vGestion() {
+  if (D.sinLic) { $('view').innerHTML = `<div class="card"><h2>Gestión comercial</h2><div class="msg err">Falta ejecutar <b>sql/14_registro_comercial.sql</b> en Supabase.</div></div>`; return; }
+  const L = filtroLic(D.licitaciones), K = kpisGestion(L), hoy = todayISO();
+  const meses = [...new Set(D.licitaciones.flatMap(l => [mesDe(l.fecha_adjudicacion), mesDe(l.fecha_envio)]).filter(Boolean))].sort().reverse();
+  const perTxt = GF.per === 'mes' ? mesTxt(mesDe(hoy)) : GF.per === 'anio' ? 'año ' + hoy.slice(0, 4) : GF.per === 'todo' ? 'todo el registro' : mesTxt(GF.per);
+  // mes a mes (últimos 8 meses con datos)
+  const mm = [...new Set(L.flatMap(l => [mesDe(l.fecha_adjudicacion), mesDe(l.fecha_envio)]).filter(Boolean))].sort().slice(-8);
+  const serie = mm.map(m => ({m, env: K.sum(L.filter(l => mesDe(l.fecha_envio) === m && +l.monto_oferta && l.estado !== 'en_estudio'), l => +l.monto_oferta), adj: K.sum(L.filter(l => l.estado === 'adjudicada' && mesDe(l.fecha_adjudicacion || l.fecha_envio) === m), montoAdj)}));
+  const mx = Math.max(1, ...serie.map(s => Math.max(s.env, s.adj)));
+  const abiertas = ['en_estudio', 'en_aprobacion', 'enviada', 'en_pausa'];
+  const lista = L.filter(l => (GF.est === 'todas' || (GF.est === 'abiertas' ? abiertas.includes(l.estado) : l.estado === GF.est)) && (!GF.q || normTxt([l.codigo, l.mandante, l.proyecto].join(' ')).includes(normTxt(GF.q))))
+    .sort((a, b) => (b.fecha_adjudicacion || b.fecha_envio || b.fecha_inicio || '').localeCompare(a.fecha_adjudicacion || a.fecha_envio || a.fecha_inicio || ''));
+  const cnt = e => L.filter(l => e === 'abiertas' ? abiertas.includes(l.estado) : e === 'todas' || l.estado === e).length;
+  $('view').innerHTML = `
+  <div class="row" style="margin-bottom:10px"><div><h2 style="margin:0">📊 Gestión comercial</h2><div class="small muted">Responsable de la cartera comercial: <b>${esc(AJ('firmante_nombre') || 'Alejandro Osorio Correa')}</b> · ${esc(AJ('firmante_cargo') || 'Encargado de Gestión Comercial y Control')}</div></div><span class="sp"></span><button class="pri" id="gNew">＋ Nueva licitación / oferta</button></div>
+  <div class="card"><div class="row" style="gap:8px">
+    <label class="row small" style="margin:0;gap:4px">Período <select id="gPer" style="width:auto"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.map(m => `<option value="${m}">${mesTxt(m)}</option>`).join('')}</select></label>
+    <label class="row small" style="margin:0;gap:4px">Unidad <select id="gUn" style="width:auto"><option value="">Todas</option><option>Terracop</option><option>Maestranza</option><option>Transporte</option></select></label>
+    <label class="row small" style="margin:0;gap:4px">Tipo <select id="gTi" style="width:auto"><option value="">Todo</option><option value="arr">Arriendo de maquinaria</option><option value="serv">Servicios y obras</option></select></label>
+  </div></div>
+  <div class="kpis">
+    <div class="kpi g"><div class="l">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="v">${clp(K.vendido)}</div><div class="small muted">${K.adj.length} adjudicación(es)${K.vendido !== K.vendBase ? ` · base ${clp(K.vendBase)} + prórrogas ${clp(K.vendido - K.vendBase)}` : ''}</div></div>
+    <div class="kpi"><div class="l">Ofertas enviadas · ${esc(perTxt)}</div><div class="v">${clp(K.sum(K.env, l => +l.monto_oferta))}</div><div class="small muted">${K.env.length} oferta(s)</div></div>
+    <div class="kpi"><div class="l">En espera de adjudicación (hoy)</div><div class="v">${clp(K.sum(K.espera, l => +l.monto_oferta))}</div><div class="small muted">${K.espera.length} oferta(s) enviada(s)${K.pausa.length ? ` · más ${K.pausa.length} en pausa (${clp(K.sum(K.pausa, l => +l.monto_oferta))})` : ''}</div></div>
+    <div class="kpi"><div class="l">Tasa de adjudicación · ${esc(perTxt)}</div><div class="v">${K.tasaN == null ? '—' : nf(K.tasaN * 100) + '%'}</div><div class="small muted">${K.ganadas.length} de ${K.resueltas.length} resueltas${K.tasaM != null ? ` · ${nf(K.tasaM * 100)}% del monto` : ''}</div></div>
+    <div class="kpi"><div class="l">En estudio / preparación</div><div class="v">${K.curso.length}</div><div class="small muted">procesos aún sin oferta enviada</div></div>
+  </div>
+  ${serie.length ? `<div class="card"><h3 style="margin:0 0 8px">Mes a mes: ofertas enviadas vs adjudicado</h3><div class="gbars">${serie.map(s => `<div class="gb"><div class="gbb"><div style="height:${Math.round(Math.sqrt(s.env / mx) * 100)}%;background:#9cc3ea" title="Enviado ${clp(s.env)}"></div><div style="height:${Math.round(Math.sqrt(s.adj / mx) * 100)}%;background:#1e8e3e" title="Adjudicado ${clp(s.adj)}"></div></div><div class="small">${MESES[+s.m.slice(5) - 1].slice(0, 3)}</div><div class="small" style="font-size:10.5px;color:#1e8e3e">${s.adj ? mm2(s.adj) : ''}</div><div class="small muted" style="font-size:10px">${s.env ? 'env. ' + mm2(s.env) : ''}</div></div>`).join('')}</div>
+    <div class="small muted"><span style="display:inline-block;width:10px;height:10px;background:#9cc3ea"></span> Ofertas enviadas &nbsp; <span style="display:inline-block;width:10px;height:10px;background:#1e8e3e"></span> Adjudicado (con prórrogas)</div></div>` : ''}
+  <div class="card">
+    <div class="row" style="gap:6px;margin-bottom:8px">${[['abiertas', 'Abiertas'], ['enviada', 'Enviadas'], ['en_pausa', 'En pausa'], ['adjudicada', 'Adjudicadas'], ['no_adjudicada', 'No adjudicadas'], ['desistida', 'Desistidas'], ['todas', 'Todas']].map(([k, t]) => `<button class="sm ${GF.est === k ? 'pri' : ''}" data-gest="${k}">${t} (${cnt(k)})</button>`).join('')}<span class="sp"></span><input id="gQ" placeholder="Buscar mandante, servicio, código…" value="${esc(GF.q)}" style="max-width:240px"></div>
+    <div class="tw"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio / proyecto</th><th>Estado</th><th>Envío</th><th>Adjudicación</th><th class="n">Oferta</th><th class="n">Adjudicado</th></tr></thead><tbody>
+    ${lista.map(l => `<tr data-lic="${l.id}" style="cursor:pointer"><td>${esc(l.codigo || '—')}</td><td>${esc(l.mandante || '')}</td><td>${esc((l.proyecto || '').slice(0, 70))}${l.es_arriendo ? ' <span class="chip">arriendo</span>' : ''}${l.unidad && l.unidad !== 'Terracop' ? ` <span class="chip">${esc(l.unidad)}</span>` : ''}</td><td>${estLic(l.estado)}</td><td>${fd(l.fecha_envio)}</td><td>${fd(l.fecha_adjudicacion)}</td><td class="n">${+l.monto_oferta ? clp(l.monto_oferta) : '—'}</td><td class="n">${l.estado === 'adjudicada' ? clp(montoAdj(l)) : '—'}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">Sin procesos con este filtro.</td></tr>'}
+    </tbody></table></div>
+    <div class="small muted" style="margin-top:6px">Las cotizaciones de la app se registran aquí solas al marcarlas Enviada, Adjudicada o Perdida. Las licitaciones se agregan con "＋ Nueva". El mes de venta es el de la <b>fecha de adjudicación</b>. Esta información (sin costos) la ve don Nelson en su panel.</div>
+  </div>`;
+  $('gPer').value = GF.per; $('gUn').value = GF.un; $('gTi').value = GF.tipo;
+  $('gPer').onchange = () => { GF.per = $('gPer').value; vGestion(); }; $('gUn').onchange = () => { GF.un = $('gUn').value; vGestion(); };
+  $('gTi').onchange = () => { GF.tipo = $('gTi').value; vGestion(); };
+  $('gQ').oninput = () => { GF.q = $('gQ').value; clearTimeout(vGestion.t); vGestion.t = setTimeout(() => { vGestion(); const q = $('gQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 350); };
+  document.querySelectorAll('[data-gest]').forEach(b => b.onclick = () => { GF.est = b.dataset.gest; vGestion(); });
+  document.querySelectorAll('[data-lic]').forEach(tr => tr.onclick = () => formLic(byId('licitaciones', tr.dataset.lic)));
+  $('gNew').onclick = () => formLic(null);
+}
+const mm2 = v => v >= 1e6 ? '$' + nf(v / 1e6, 1) + ' M' : clp(v);
+function formLic(l) {
+  const nuevo = !l; l = l || {estado: 'enviada', unidad: 'Terracop', fecha_envio: todayISO(), origen: 'manual'};
+  const cot = l.codigo && D.cotizaciones.find(c => String(c.numero) === String(l.codigo));
+  modal(`<h3>${nuevo ? 'Nueva licitación / oferta' : 'Licitación / oferta ' + esc(l.codigo || '')}</h3>
+  ${cot ? `<div class="msg info small">Vinculada a la cotización <a href="#c-${cot.id}">${esc(nCot(cot))}</a> de la app: su estado y monto se actualizan solos al guardar la cotización.</div>` : ''}
+  <div class="f">
+    <div><label>Código / N° cotización</label><input id="lCo" value="${esc(l.codigo || '')}" placeholder="Ej. 1330 o LIC-2026-010"></div>
+    <div><label>Mandante</label><input id="lMa" list="lMaL" value="${esc(l.mandante || '')}"><datalist id="lMaL">${D.mandantes.map(m => `<option value="${esc(m.nombre)}">`).join('')}</datalist></div>
+    <div><label>Estado</label><select id="lEs">${Object.entries(LEST).map(([k, t]) => `<option value="${k}" ${l.estado === k ? 'selected' : ''}>${t}</option>`).join('')}</select></div>
+  </div>
+  <div style="margin-top:10px"><label>Servicio / proyecto</label><input id="lPr" value="${esc(l.proyecto || '')}"></div>
+  <div class="f" style="margin-top:10px">
+    <div><label>Tipo de servicio</label><input id="lTi" list="lTiL" value="${esc(l.tipo_servicio || '')}"><datalist id="lTiL">${[...new Set(D.licitaciones.map(x => x.tipo_servicio).filter(Boolean))].map(t => `<option value="${esc(t)}">`).join('')}</datalist></div>
+    <div><label>Unidad de negocio</label><select id="lUn">${['Terracop', 'Maestranza', 'Transporte'].map(u => `<option ${l.unidad === u ? 'selected' : ''}>${u}</option>`).join('')}</select></div>
+  </div>
+  <div class="f" style="margin-top:10px">
+    <div><label>Fecha envío oferta</label><input type="date" id="lFe" value="${l.fecha_envio || ''}"></div>
+    <div><label>Fecha adjudicación</label><input type="date" id="lFa" value="${l.fecha_adjudicacion || ''}"></div>
+    <div><label>Duración del servicio (si se adjudica)</label><input id="lDu" value="${esc(l.duracion || '')}" placeholder="Ej. 3 meses, 21 días"></div>
+  </div>
+  <div class="f" style="margin-top:10px">
+    <div><label>Monto oferta enviada ($ neto)</label><input id="lMo" inputmode="numeric" value="${l.monto_oferta ?? ''}"></div>
+    <div><label>Monto adjudicado ($ neto)</label><input id="lMa2" inputmode="numeric" value="${l.monto_adjudicado ?? ''}" placeholder="vacío = monto de la oferta"></div>
+    <div><label>Total con prórrogas ($)</label><input id="lMt" inputmode="numeric" value="${l.monto_total ?? ''}" placeholder="vacío = adjudicado"></div>
+  </div>
+  <div class="f" style="margin-top:10px">
+    <div><label>Motivo (no adjudicada / desistida)</label><input id="lMv" value="${esc(l.motivo || '')}"></div>
+    <div><label class="row" style="gap:6px;margin-top:22px;cursor:pointer"><input type="checkbox" id="lAr" style="width:auto" ${l.es_arriendo ? 'checked' : ''}> Es arriendo de maquinaria</label></div>
+  </div>
+  <div style="margin-top:10px"><label>Notas</label><textarea id="lNo" rows="2">${esc(l.notas || '')}</textarea></div>
+  <div class="mf">${nuevo ? '' : '<button class="dan" id="lDel">Eliminar</button>'}<span class="sp"></span><button id="lCan">Cancelar</button><button class="pri" id="lOk">Guardar</button></div>`);
+  $('lEs').onchange = () => { if ($('lEs').value === 'adjudicada' && !$('lFa').value) $('lFa').value = todayISO(); };
+  $('lCan').onclick = closeModal;
+  if ($('lDel')) $('lDel').onclick = () => { if (!confirm('¿Eliminar este proceso del registro comercial?')) return; guardar(async () => { await del('licitaciones', l.id); D.licitaciones = D.licitaciones.filter(x => x.id !== l.id); closeModal(); vGestion(); }, 'Eliminado'); };
+  $('lOk').onclick = () => {
+    const o = {codigo: val('lCo') || null, mandante: val('lMa') || null, estado: val('lEs'), proyecto: val('lPr') || null, tipo_servicio: val('lTi') || null, unidad: val('lUn'),
+      fecha_envio: val('lFe') || null, fecha_adjudicacion: val('lFa') || null, duracion: val('lDu') || null, monto_oferta: num(val('lMo')), monto_adjudicado: num(val('lMa2')), monto_total: num(val('lMt')),
+      motivo: val('lMv') || null, es_arriendo: $('lAr').checked, notas: val('lNo') || null, actualizado: new Date().toISOString()};
+    if (!o.mandante && !o.proyecto) return alert('Escriba al menos el mandante o el servicio.');
+    if (o.estado === 'adjudicada' && !o.fecha_adjudicacion) o.fecha_adjudicacion = todayISO();
+    guardar(async () => {
+      if (nuevo) { const r = await ins('licitaciones', {...o, origen: 'manual'}); D.licitaciones.push(r); }
+      else { const r = await upd('licitaciones', l.id, o); Object.assign(l, r || o); }
+      closeModal(); vGestion();
+    }, 'Guardado');
+  };
 }
 
 /* ---------- Empresa y firma (en Catálogo) ---------- */
