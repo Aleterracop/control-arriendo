@@ -113,7 +113,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 #view td.n:not(:has(input)):hover,#view .kpi .v:hover{text-decoration:underline dotted;text-underline-offset:3px}
 .csel{background:#fff3b8!important;box-shadow:inset 0 0 0 2px #e6a821;border-radius:4px}
 .cneg{background:#fde0e0!important;box-shadow:inset 0 0 0 2px var(--red);border-radius:4px}
-#calc{position:fixed;right:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--sky2);border-radius:14px;box-shadow:var(--sh2);min-width:240px;max-width:340px;font-size:13px}
+#calc{position:fixed;right:16px;bottom:16px;z-index:3000;background:#fff;border:1px solid var(--sky2);border-radius:14px;box-shadow:var(--sh2);min-width:240px;max-width:340px;font-size:13px}
 #calc .ch{display:flex;align-items:center;gap:8px;padding:9px 12px;background:linear-gradient(135deg,var(--navy2),var(--blue));color:#fff;border-radius:13px 13px 0 0;cursor:pointer}
 #calc .cb{padding:8px 12px;max-height:220px;overflow:auto}
 #calc .ct{padding:8px 12px;border-top:1px solid var(--line);font-weight:700;color:var(--navy)}
@@ -121,6 +121,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 #calc .ci span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #calc button{padding:2px 7px;font-size:11px}
 @media (max-width:700px){#calc{bottom:70px;right:8px;left:8px;max-width:none}}
+#calc.mini{left:auto;min-width:0;opacity:.9}
 @media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
 .cpwrap{overflow-x:auto;padding:4px 0 20px}
@@ -380,7 +381,7 @@ async function go() {
   if (lastHash.startsWith('c-') && h !== lastHash && cotSucia()) {
     if (confirm('La cotización tiene cambios sin guardar (precios, cantidades u otros datos).\n\nAceptar = Guardar los cambios\nCancelar = Descartarlos')) await saveCot(true); else COT = null;
   }
-  lastHash = h;
+  lastHash = h; if ($('calc').hidden) drawCalc();
   document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^c[dp]?-/.test(h) && a.dataset.v === 'cotizar')));
   const v = $('view');
   try {
@@ -493,8 +494,9 @@ function formArriendo(a) {
     const f = byId('flota', $('fFl').value); if (!f) return;
     const t = byId('equipo_tipos', f.tipo_id);
     if (!$('fDe').value) $('fDe').value = `${f.tipo ? f.tipo.charAt(0) + f.tipo.slice(1).toLowerCase() : ''} ${f.modelo || ''} (${f.patente || f.codigo})`.trim();
-    if (t && !$('fTa').value) { if (t.tarifa) $('fTa').value = Math.round(t.tarifa); $('fMo').value = t.unidad === 'día' ? 'dia' : t.unidad === 'mes' ? 'mes' : 'hora'; }
-    $('fWarn').textContent = t && !t.tarifa ? `El tipo "${t.nombre}" no tiene tarifa en el catálogo: escríbala a mano (puede guardarla luego en Catálogo).` : '';
+    const lp = +(val('fOp') ? f.tarifa_lista_operador : f.tarifa_lista) || +f.tarifa_lista_operador || +f.tarifa_lista || 0;
+    if (!$('fTa').value && lp) { $('fTa').value = Math.round(lp); $('fMo').value = f.unidad_cobro === 'mes' ? 'mes' : 'hora'; }
+    $('fWarn').textContent = lp ? `Tarifa sugerida = lista ${val('fOp') || !f.tarifa_lista ? 'con' : 'sin'} operador de la planilla (${clp(lp)} por ${f.unidad_cobro === 'mes' ? 'mes' : 'hm'}). Escriba el precio real de la cotización, por día, hora o mes según corresponda.` : 'Escriba la tarifa de la cotización a mano.';
   };
   $('fFl').onchange = fillFromFlota;
   $('fMa').onchange = async () => {
@@ -1227,14 +1229,38 @@ function updTot() {
     if (u) u.innerHTML = it.costo != null && it.costo !== '' && tt ? `${clp(tt - (+it.cantidad || 0) * (+it.costo || 0))}<div class="muted">${nf((1 - (+it.costo || 0) / (+it.precio || 1)) * 100)}% s/precio</div>` : '<span class="muted">—</span>';
   });
   const b = document.getElementById('cTot'); if (!b) return;
+  const maqP = (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !(i.proveedor || i.costo_uf)).reduce((sum, i) => sum + (i.apu || []).filter(r => /^Equipo /i.test(r.c || '')).reduce((x, r) => x + (+r.q || 0) * (+r.p || 0), 0), 0);
   b.innerHTML = `<div class="kpis" style="margin:0">
     <div class="kpi"><div class="l">Total neto</div><div class="v">${clp(t.neto)}</div></div>
     <div class="kpi"><div class="l">IVA ${nf(P('iva', 0.19) * 100)}%</div><div class="v">${clp(t.iva)}</div></div>
     <div class="kpi g"><div class="l">Total con IVA</div><div class="v">${clp(t.total)}</div></div>
     ${verInternos ? `<div class="kpi o"><div class="l">Costo estimado</div><div class="v">${t.costo ? clp(t.costo) : '—'}</div></div>
-    <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">Utilidad estimada</div><div class="v">${t.costo ? clp(t.util) + ' · ' + nf(t.margen * 100) + '%' : '—'}</div></div>` : ''}
-  </div>${verInternos ? precioUnicoHTML(c) : ''}${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
+    <div class="kpi ${t.util < 0 ? 'r' : 'g'}"><div class="l">${maqP ? 'Utilidad sobre tarifa máquina' : 'Utilidad estimada'}</div><div class="v">${t.costo ? clp(t.util) + ' · ' + nf(t.margen * 100) + '%' : '—'}</div></div>
+    ${maqP ? `<div class="kpi g"><div class="l">Margen directo (equipo propio)</div><div class="v">${clp(t.util + maqP)} · ${nf((t.util + maqP) / (t.neto || 1) * 100)}%</div></div>` : ''}` : ''}
+  </div>${verInternos ? gananciaEquiposHTML(c) : ''}${verInternos && maqP ? `<div class="small muted" style="margin-top:6px">🔎 <b>Cómo leer la utilidad:</b> en los equipos propios la app cuenta como costo la <b>Tarifa Máquina</b> de la planilla (${clp(maqP)} en esta cotización). <b>Utilidad sobre tarifa máquina</b> = lo que se gana además de esa tarifa. <b>Margen directo</b> = venta menos lo que realmente se paga (operador, alimentación, camioneta, Rental, fletes…), sin descontar la máquina propia: de ahí salen su mantención, desgaste y la ganancia de Terracop. Cuando el taller entregue el costo real por hora, se carga en Catálogo → Equipos y ambos números se ajustan.</div>` : ''}${verInternos ? precioUnicoHTML(c) : ''}${verInternos && t.sinCosto ? `<div class="small muted" style="margin-top:6px">${clp(t.sinCosto)} del neto no tiene costo ingresado y no entra en el cálculo de utilidad. Use 🧮 o escriba el costo unitario.</div>` : ''}`;
   bindPrecioUnico();
+}
+/* ---------- Ganancia diaria estimada por equipo ---------- */
+function gananciaEquiposHTML(c) {
+  const its = (c.items || []).filter(i => i.tipo === 'i' && !i.oculto && i.equipo_tipo_id && +i.precio && i.costo != null && i.costo !== '');
+  if (!its.length) return '';
+  const filas = its.map(it => {
+    const m = it.meta || {}, apu = it.apu || [], nEq = m.equipos || 1;
+    const U = D.flota.filter(f => f.activo !== false && f.tipo_id === it.equipo_tipo_id), un = it.flota_id ? byId('flota', it.flota_id) : null;
+    const prop = it.propiedad === 'arriendo' || it.proveedor || it.costo_uf ? 'arriendo' : un && un.propiedad ? (un.propiedad === 'arriendo' ? 'arriendo' : un.propiedad) : U.length && U.every(f => f.propiedad === 'leasing') ? 'leasing' : 'propio', sub = prop === 'arriendo';
+    const maq = sub ? 0 : apu.filter(r => /^Equipo /i.test(r.c || '')).reduce((x, r) => x + (+r.q || 0) * (+r.p || 0), 0);
+    const venta = (+it.precio || 0) * (+it.cantidad || 0), costoTot = (+it.costo || 0) * (+it.cantidad || 0), gan = venta - costoTot + maq;
+    let d = m.dias; if (!d) { const ra = apu.find(r => /alimentaci/i.test(r.c || '')); if (ra) d = Math.round((+ra.q || 0) / nEq); }
+    if (!d) d = it.unidad === 'día' ? +it.cantidad / nEq : it.unidad === 'mes' ? +it.cantidad * 30 / nEq : it.unidad === 'hm' ? Math.ceil(+it.cantidad / nEq / (m.hd || P('horas_mes', 180) / 30)) : 0;
+    d = Math.round(d) || 0;
+    const T = byId('equipo_tipos', it.equipo_tipo_id) || {}, cuota = prop === 'leasing' ? (+it.leasing_cuota || 0) * (d || 30) / 30 : 0, ganF = gan - cuota, idx = c.items.indexOf(it);
+    const sel = it.proveedor || it.costo_uf ? `<span class="chip">arrendado a ${esc(it.proveedor || 'tercero')}</span>` : `<select data-gun="${idx}" style="width:auto;max-width:260px;padding:1px 4px;font-size:12px"><option value="">${un ? '— Sin definir —' : `Unidad sin definir (${prop === 'leasing' ? 'leasing' : 'se asume propia'})`}</option>${U.map(f => `<option value="${f.id}" ${un && un.id === f.id ? 'selected' : ''}>${esc(flotaLab(f))}</option>`).join('')}<option value="__arr" ${it.propiedad === 'arriendo' ? 'selected' : ''}>Arrendado a un tercero</option></select> <span class="chip">${prop === 'leasing' ? 'leasing' : prop === 'arriendo' ? 'arrendado' : 'propio'}</span>`;
+    const nota = prop === 'arriendo' ? 'Ya descuenta lo que se paga al proveedor.'
+      : prop === 'leasing' ? (it.leasing_cuota ? `Descuenta la cuota de leasing (${clp(it.leasing_cuota)}/mes → ${clp(cuota)} en ${d || 30} días). <i>Falta el costo de taller.</i>` : '<b style="color:var(--orange)">Escriba la cuota mensual del leasing para descontarla:</b>')
+      : '<i>Equipo pagado: no hay cuota. Aún no descuenta el costo de taller (desgaste, mantención, repuestos).</i>';
+    return `<li style="margin-bottom:4px"><b>${esc(T.nombre || it.desc)}</b> (${esc(it.item)}) ${sel}${prop === 'leasing' ? ` <input data-gcuota="${idx}" inputmode="numeric" value="${it.leasing_cuota || ''}" placeholder="cuota $/mes" style="width:110px;padding:1px 5px;font-size:12px">` : ''}<br>${d ? `Arriendo por <b>${d} días</b> → ganancia diaria estimada <b>${clp(ganF / d)}</b>; total por los ${d} días <b>${clp(ganF)}</b>.` : `Ganancia estimada <b>${clp(ganF)}</b>.`} ${nota}</li>`;
+  }).join('');
+  return `<div class="msg info small" style="margin:8px 0 0">💰 <b>Ganancia estimada por equipo</b> (venta menos operador, alimentación, camioneta, fletes y arriendos a terceros):<ul style="margin:4px 0 0;padding-left:18px">${filas}</ul></div>`;
 }
 /* ---------- Precio único para equipos iguales (propios y subarrendados) ---------- */
 const redUp = (v, m = 500) => Math.ceil(v / m) * m;
@@ -1302,6 +1328,8 @@ function precioUnicoHTML(c) {
     ${META_SUG ? `<span>💡 Meta sugerida: <b>${clp(META_SUG.v)}/h</b> <span class="muted">(${META_SUG.why})</span></span>${META_SUG.v !== meta ? `<button class="sm" id="metaUse" data-v="${META_SUG.v}">Usar ${clp(META_SUG.v)}</button>` : ''}` : ''}<span class="muted">Se guarda para las próximas cotizaciones.</span></div>`;
 }
 function bindPrecioUnico() {
+  document.querySelectorAll('[data-gun]').forEach(sl => sl.onchange = () => { const it = COT.items[+sl.dataset.gun]; if (sl.value === '__arr') { it.propiedad = 'arriendo'; delete it.flota_id; } else { delete it.propiedad; if (sl.value) it.flota_id = sl.value; else delete it.flota_id; } updTot(); });
+  document.querySelectorAll('[data-gcuota]').forEach(inp => inp.onchange = () => { COT.items[+inp.dataset.gcuota].leasing_cuota = num(inp.value); updTot(); });
   if (PU_PEND.length) { const pend = PU_PEND; PU_PEND = []; pend.forEach(({ix, v}) => ix.forEach(i => { COT.items[i].precio = v; })); renderItems(); toast('Precio automático actualizado · recuerde Guardar'); return; }
   document.querySelectorAll('[data-pmodo]').forEach(sel => sel.onchange = () => { sel.dataset.pmodo.split(',').forEach(i => { if (sel.value) COT.items[+i].pauto = sel.value; else delete COT.items[+i].pauto; }); renderItems(); });
   document.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const v = +b.dataset.pv; b.dataset.pu.split(',').forEach(i => { COT.items[+i].precio = v; }); renderItems(); toast(`Precio ${clp(v)} aplicado · recuerde Guardar`); });
@@ -1398,7 +1426,8 @@ function asistenteEquipo() {
   <p class="small muted">Arma el ítem de arriendo con su costo (equipo + operador + alimentación + alojamiento + combustible) y, si corresponde, el ítem de movilización. Todo queda editable.</p>
   <div class="f">
     <div><label>Tipo de equipo</label><select id="wT">${opts(tipos, null, t => { const F = D.flota.filter(f => f.tipo_id === t.id), L0 = F.map(f => +f.tarifa_lista).filter(Boolean), L1 = F.map(f => +f.tarifa_lista_operador).filter(Boolean); return `${t.nombre}${L0.length ? ' · lista sin op. ' + clp(Math.max(...L0)) : ''}${L1.length ? ' · con op. ' + clp(Math.max(...L1)) : ''} · costo interno ${t.tarifa ? clp(t.tarifa) : 'sin costo'}${/provisori/i.test(t.notas || '') ? ' (prov.)' : ''}`; }, '— Elegir —')}</select></div>
-    <div><label>Origen del equipo</label><select id="wOr"><option value="propio">Propio Terracop</option><option value="sub">Subarrendado a proveedor</option></select></div>
+    <div><label>Origen del equipo</label><select id="wOr"><option value="propio">Equipo de Terracop (propio o leasing)</option><option value="sub">Arrendado a un tercero (subarriendo)</option></select></div>
+    <div id="wUnW"><label>Unidad (opcional · dice si es propio o leasing)</label><select id="wUn"><option value="">— Sin definir —</option></select></div>
     <div id="wPeW" hidden><label>Equipo del proveedor (catálogo)</label><select id="wPe"><option value="">— Escribir a mano —</option></select></div>
     <div id="wProvW" hidden><label>Proveedor</label><input id="wProv" placeholder="Ej. Rental, Finning…"></div>
     <div id="wUfW" hidden><label>Valor UF de hoy ($)</label><input id="wUfv" inputmode="decimal" value="${P('uf', 40000)}"></div>
@@ -1477,6 +1506,8 @@ function asistenteEquipo() {
       const how = {'mes>día': 'mes ÷ 30', 'día>mes': 'día × 30', 'mes>hm': `mes ÷ ${P('horas_mes', 180)} h`, 'hm>mes': `hora × ${P('horas_mes', 180)}`, 'día>hm': `día ÷ ${val('wHd')} h`, 'hm>día': `hora × ${val('wHd')} h`}[uCat + '>' + u];
       $('wConv').innerHTML = u !== uCat ? `Costo convertido desde el catálogo: ${clp(tarCat)} / ${uCat} → <b>${clp(cv)} / ${u}</b> (${how}). Para arriendos cortos puede agregar un recargo.` : ''; }
     desc(); };
+  const fillUn = () => { const T = t(); $('wUn').innerHTML = '<option value="">— Sin definir —</option>' + (T ? D.flota.filter(f => f.activo !== false && f.tipo_id === T.id).map(f => `<option value="${f.id}">${esc(flotaLab(f))}</option>`).join('') : ''); };
+  $('wT').addEventListener('change', fillUn);
   $('wT').onchange = () => { const T = t(); if (!T) return; tarCat = T.tarifa ? +T.tarifa : null; uCat = T.unidad === 'mes' ? 'mes' : T.unidad === 'día' ? 'día' : 'hm';
     $('wU').value = uCat; qTocada = false;
     const pal = normTxt(T.nombre).split(/\s+/).filter(w => w.length > 3);
@@ -1494,7 +1525,7 @@ function asistenteEquipo() {
     $('wProv').value = x.proveedor || ''; if (x.costo_uf) { $('wMon').value = 'UF'; $('wUfW').hidden = false; $('wTa').value = String(x.costo_uf).replace('.', ','); } else { $('wMon').value = '$'; $('wUfW').hidden = true; $('wTa').value = x.costo_clp || ''; }
     const uu = /mes/.test(x.unidad || '') ? 'mes' : /d[ií]a/.test(x.unidad || '') ? 'día' : 'hm'; if (val('wU') !== uu) { $('wU').value = uu; $('wQl').textContent = `Cantidad a cotizar (${({hm: 'horas', 'día': 'días', mes: 'meses'})[uu]})`; }
     calc(); };
-  $('wOr').onchange = () => { const sub = val('wOr') === 'sub'; $('wProvW').hidden = !sub; $('wPeW').hidden = !sub; if (sub) fillPe(); if (sub) { $('wTa').value = ''; $('wTa').placeholder = 'costo del proveedor'; } else if (tarCat) { $('wMon').value = '$'; unidad(); } calc(); };
+  $('wOr').onchange = () => { const sub = val('wOr') === 'sub'; $('wUnW').hidden = sub; $('wProvW').hidden = !sub; $('wPeW').hidden = !sub; if (sub) fillPe(); if (sub) { $('wTa').value = ''; $('wTa').placeholder = 'costo del proveedor'; } else if (tarCat) { $('wMon').value = '$'; unidad(); } calc(); };
   $('wMon').onchange = () => { const uf = val('wMon') === 'UF'; $('wUfW').hidden = !uf; if (uf) { $('wTa').value = ''; $('wTa').placeholder = 'ej. 0,98'; } else { $('wConv').innerHTML = ''; } calc(); };
   $('wUfv').oninput = calc;
   $('wProv').oninput = calc;
@@ -1511,7 +1542,7 @@ function asistenteEquipo() {
     const c = COT, gA = c.items.find(i => i.tipo === 'g') ? c.items.filter(i => i.tipo === 'g')[0].item : (c.items.unshift({tipo: 'g', item: 'A', desc: 'Arriendo de equipo'}), 'A');
     let pos = c.items.findIndex(i => i.tipo === 'g' && i.item === gA) + 1; while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
     const n = c.items.filter(i => i.tipo === 'i' && String(i.item).startsWith(gA + '.')).length;
-    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id, meta: res.meta,
+    c.items.splice(pos, 0, {tipo: 'i', item: `${gA}.${n + 1}`, desc: val('wDe') || 'Arriendo de ' + T.nombre, unidad: res.u, cantidad: res.cant, precio: res.precio, costo: Math.round(res.cu), apu: res.rows, equipo_tipo_id: T.id, meta: res.meta, ...(val('wOr') !== 'sub' && val('wUn') ? {flota_id: val('wUn')} : {}),
       ...(val('wOr') === 'sub' ? {proveedor: val('wProv') || 'proveedor', costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null} : {})});
     if (val('wOr') === 'sub' && !val('wPe') && !D.sinProv && confirm(`¿Guardar "${val('wProv') || 'proveedor'} · ${T.nombre} · ${val('wTa')} ${val('wMon')} / ${val('wU')}" en el catálogo de equipos de proveedores?`)) {
       try { const r = await ins('proveedor_equipos', {proveedor: val('wProv') || 'proveedor', equipo: T.nombre, tipo_id: T.id, unidad: val('wU'), costo_uf: val('wMon') === 'UF' ? num(val('wTa')) : null, costo_clp: val('wMon') === '$' ? num(val('wTa')) : null}); D.proveedor_equipos.push(r); } catch (e) { alert(e.message); } }
@@ -2015,44 +2046,68 @@ async function setAjuste(clave, valor) {
 }
 
 
-/* ---------------- Calculadora: pinchar horas o montos para sumarlos ---------------- */
-const CALC = new Map(); let calcOpen = true;
+/* ---------------- Calculadora flotante: pinchar montos y sumar / restar / multiplicar / dividir ---------------- */
+const CALC = new Map(); let calcOpen = true, calcOp = '+', calcModo = false, calcSeq = 0;
 const parseCel = t => { t = (t || '').trim().split('\n')[0]; if (!t || /[\/·%]/.test(t) && !/^-?\$/.test(t)) return null; const neg = /^-/.test(t); const m = t.replace(/[^\d.,]/g, ''); if (!m) return null;
   const v = +m.replace(/\./g, '').replace(',', '.'); return isFinite(v) ? (neg ? -v : v) : null; };
+const CSEL = '#view td.n, #view .kpi .v, #mbox td.n, #mbox .kpi .v';
 function celInfo(el) {
   const txt = el.innerText, v = parseCel(txt); if (v == null) return null;
-  let unit, lab, rowKey;
-  if (el.closest('.kpi')) { lab = el.closest('.kpi').querySelector('.l').innerText; rowKey = lab; unit = /\$/.test(txt) ? '$' : lab; }
-  else { const td = el.closest('td'), tr = td.parentElement, idx = [...tr.children].indexOf(td), th = td.closest('table').querySelectorAll('thead th')[idx];
-    const col = th ? th.innerText.trim() : ''; rowKey = (tr.children[0].innerText + ' ' + (tr.children[1] ? tr.children[1].innerText : '')).trim().slice(0, 40); lab = rowKey + ' · ' + col;
-    unit = /\$/.test(txt) ? '$' : /hora|cant|acum/i.test(col) ? 'h / cant.' : col || 'n°'; }
-  return {v, unit, lab, key: location.hash + '|' + rowKey + '|' + (el.closest('td') ? [...el.closest('tr').children].indexOf(el.closest('td')) : 'k')};
+  let lab, rowKey;
+  if (el.closest('.kpi')) { lab = el.closest('.kpi').querySelector('.l').innerText; rowKey = lab; }
+  else { const td = el.closest('td'), tr = td.parentElement, idx = [...tr.children].indexOf(td), tb = td.closest('table'), th = tb ? tb.querySelectorAll('thead th')[idx] : null;
+    const col = th ? th.innerText.trim() : ''; const c0 = tr.children[0].querySelector('input') ? tr.children[0].querySelector('input').value : tr.children[0].innerText;
+    rowKey = (c0 + ' ' + (tr.children[1] && !tr.children[1].querySelector('input') ? tr.children[1].innerText : '')).trim().slice(0, 40); lab = rowKey + ' · ' + col; }
+  return {v, lab, key: (el.closest('#mbox') ? 'm' : location.hash) + '|' + rowKey + '|' + (el.closest('td') ? [...el.closest('tr').children].indexOf(el.closest('td')) : 'k')};
 }
+function inputInfo(inp) {
+  const v = num(inp.value); if (v == null) return null;
+  const tr = inp.closest('tr'), td = inp.closest('td'), tb = inp.closest('table'), idx = tr && td ? [...tr.children].indexOf(td) : -1, th = tb && idx >= 0 ? tb.querySelectorAll('thead th')[idx] : null;
+  const c0 = tr ? (tr.children[0].querySelector('input') ? tr.children[0].querySelector('input').value : tr.children[0].innerText) : '';
+  const lab = ((c0 || '').trim().slice(0, 34) + (th ? ' · ' + th.innerText.trim() : '') || inp.closest('div')?.querySelector('label')?.innerText || 'valor');
+  return {v, lab, key: 'i|' + (++calcSeq)};
+}
+const addCalc = (i, op) => { if (CALC.has(i.key)) CALC.delete(i.key); else CALC.set(i.key, {...i, op: op || calcOp}); calcOpen = true; drawCalc(); markCalc(); };
 document.addEventListener('click', e => {
-  const el = e.target.closest('#view td.n, #view .kpi .v'); if (!el || el.querySelector('input,button') || e.target.closest('a,button,input')) return;
+  if (e.target.closest('#calc')) return;
+  if (calcModo) { const inp = e.target.closest('#view input, #mbox input'); if (inp && inp.type !== 'checkbox' && inp.type !== 'file') { const i = inputInfo(inp); if (i) { e.preventDefault(); inp.blur(); addCalc(i, e.shiftKey ? '−' : null); return; } } }
+  const el = e.target.closest(CSEL); if (!el || el.querySelector('input,button') || e.target.closest('a,button,input,select')) return;
   const i = celInfo(el); if (!i) return;
-  if (CALC.has(i.key)) CALC.delete(i.key); else CALC.set(i.key, {...i, v: e.shiftKey ? -Math.abs(i.v) : i.v});
-  drawCalc(); markCalc();
-});
+  addCalc(i, e.shiftKey ? '−' : null);
+}, true);
+document.addEventListener('focusin', e => { if (calcModo && e.target.closest('#view input, #mbox input') && !e.target.closest('#calc')) e.target.blur(); });
 function markCalc() {
-  document.querySelectorAll('#view .csel, #view .cneg').forEach(x => x.classList.remove('csel', 'cneg'));
+  document.querySelectorAll('.csel, .cneg').forEach(x => x.classList.remove('csel', 'cneg'));
   if (!CALC.size) return;
-  document.querySelectorAll('#view td.n, #view .kpi .v').forEach(el => { const i = celInfo(el); if (i && CALC.has(i.key)) el.classList.add(CALC.get(i.key).v < 0 ? 'cneg' : 'csel'); });
+  document.querySelectorAll(CSEL).forEach(el => { const i = celInfo(el); if (i && CALC.has(i.key)) el.classList.add(CALC.get(i.key).op === '−' ? 'cneg' : 'csel'); });
 }
+function resCalc() { let r = null; CALC.forEach(x => { if (r == null) { r = x.op === '−' ? -x.v : x.v; return; } r = x.op === '+' ? r + x.v : x.op === '−' ? r - x.v : x.op === '×' ? r * x.v : x.v ? r / x.v : r; }); return r || 0; }
 function drawCalc() {
-  const box = $('calc'); if (!CALC.size) { box.hidden = true; return; }
-  const tot = {}; CALC.forEach(x => { tot[x.unit] = (tot[x.unit] || 0) + x.v; });
-  const fmt = (u, v) => u === '$' ? clp(v) : nf(v, 1) + (u === 'h / cant.' ? '' : '');
-  box.hidden = false;
-  box.innerHTML = `<div class="ch" id="cTg">🧮 <b style="flex:1">Calculadora · ${CALC.size} marcado(s)</b><span>${calcOpen ? '▾' : '▸'}</span></div>
-    ${calcOpen ? `<div class="cb">${[...CALC.values()].map((x, k) => `<div class="ci"><span title="${esc(x.lab)}">${esc(x.lab)}</span><b style="${x.v < 0 ? 'color:var(--red)' : ''}">${fmt(x.unit, x.v)}</b><button class="dan" data-cx="${k}">✕</button></div>`).join('')}</div>` : ''}
-    <div class="ct">${Object.entries(tot).map(([u, v]) => `<div class="row"><span style="font-weight:400" class="muted">${u === '$' ? 'Total $' : 'Total ' + esc(u)}</span><span class="sp"></span>${fmt(u, v)}</div>`).join('')}
-    <div class="row" style="margin-top:6px"><span class="small muted" style="font-weight:400">Clic: suma · Shift + clic: resta</span><span class="sp"></span><button id="cCl">Limpiar</button></div></div>`;
+  const box = $('calc'); box.hidden = false; box.classList.toggle('mini', !CALC.size && !calcModo && !calcOpen);
+  const fmt = v => Math.abs(v) >= 1000 ? clp(v) : nf(v, Math.abs(v) < 10 ? 2 : 1);
+  if (!CALC.size && !calcModo && !calcOpen) { box.innerHTML = `<div class="ch" id="cTg" style="border-radius:13px">🧮 <b style="flex:1">Calculadora</b></div>`; $('cTg').onclick = () => { calcOpen = true; drawCalc(); }; return; }
+  if (!CALC.size && !calcModo) calcOpen = calcOpen;
+  const ops = ['+', '−', '×', '÷'];
+  box.innerHTML = `<div class="ch" id="cTg">🧮 <b style="flex:1">Calculadora${CALC.size ? ' · ' + CALC.size : ''}</b><span>${calcOpen ? '▾' : '▸'}</span></div>
+    ${calcOpen ? `<div class="cb">${CALC.size ? [...CALC.values()].map((x, k) => `<div class="ci"><b style="width:14px;color:var(--blue)">${k ? x.op : (x.op === '−' ? '−' : '')}</b><span title="${esc(x.lab)}">${esc(x.lab)}</span><b>${fmt(x.v)}</b><button class="dan" data-cx="${k}">✕</button></div>`).join('') : '<div class="small muted">Pinche montos o horas de la pantalla para operarlos.</div>'}</div>
+    <div class="ct"><div class="row"><span class="muted" style="font-weight:400">Resultado</span><span class="sp"></span><span style="font-size:16px">${fmt(resCalc())}</span></div>
+    <div class="row" style="gap:4px;margin-top:6px"><span class="small muted" style="font-weight:400">Próximo:</span>${ops.map(o => `<button data-op="${o}" class="${calcOp === o ? 'pri' : ''}" style="min-width:30px;font-size:14px">${o}</button>`).join('')}</div>
+    <div class="row" style="gap:4px;margin-top:6px"><input id="cNum" inputmode="decimal" placeholder="escribir un número" style="flex:1;padding:4px 6px;font-size:12px"><button id="cAdd">Agregar</button></div>
+    <label class="row small" style="margin:6px 0 0;gap:5px;font-weight:400;cursor:pointer;color:var(--ink)"><input type="checkbox" id="cMod" style="width:auto" ${calcModo ? 'checked' : ''}> Tomar también valores de las celdas que se escriben (precio, cantidad…)</label>
+    <div class="row" style="margin-top:6px"><span class="small muted" style="font-weight:400">Shift + clic: resta</span><span class="sp"></span><button id="cCp" title="Copiar resultado">📋</button><button id="cCl">Limpiar</button><button id="cX" title="Cerrar">✕</button></div></div>` : '</div>'}`;
   $('cTg').onclick = () => { calcOpen = !calcOpen; drawCalc(); };
-  $('cCl').onclick = () => { CALC.clear(); drawCalc(); markCalc(); };
+  if (!calcOpen) return;
+  $('cCl').onclick = () => { CALC.clear(); calcOp = '+'; drawCalc(); markCalc(); };
+  $('cX').onclick = () => { CALC.clear(); calcModo = false; calcOp = '+'; calcOpen = false; markCalc(); drawCalc(); };
+  $('cCp').onclick = () => { navigator.clipboard && navigator.clipboard.writeText(String(Math.round(resCalc() * 100) / 100)); toast('Resultado copiado'); };
+  box.querySelectorAll('[data-op]').forEach(b => b.onclick = () => { calcOp = b.dataset.op; drawCalc(); });
+  $('cMod').onchange = () => { calcModo = $('cMod').checked; toast(calcModo ? 'Modo calculadora: al pinchar una celda se toma su valor (no se edita). Desmárquelo para volver a escribir.' : 'Modo calculadora desactivado'); drawCalc(); };
+  const add = () => { const v = num($('cNum').value); if (v == null) return; addCalc({v, lab: 'número escrito', key: 'n|' + (++calcSeq)}); };
+  $('cAdd').onclick = add; $('cNum').onkeydown = e => { if (e.key === 'Enter') add(); };
   box.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => { const k = [...CALC.keys()][+b.dataset.cx]; CALC.delete(k); drawCalc(); markCalc(); });
 }
-new MutationObserver(() => { clearTimeout(markCalc.t); markCalc.t = setTimeout(markCalc, 30); }).observe($('view'), {childList: true, subtree: true});
+calcOpen = false;
+new MutationObserver(() => { clearTimeout(markCalc.t); markCalc.t = setTimeout(markCalc, 30); }).observe(document.body, {childList: true, subtree: true});
 
 /* ---------------- Inicio de sesión ---------------- */
 function showLogin(msg) { $('login').hidden = false; $('nav').hidden = true; $('logout').hidden = true; $('view').innerHTML = ''; $('lErr').textContent = msg || ''; }
