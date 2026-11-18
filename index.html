@@ -28,7 +28,8 @@
   .empty h2{color:var(--navy);margin:0 0 8px}
   .drop.over{background:var(--pale)}
   .gbars{display:flex;gap:10px;align-items:flex-end;height:170px;padding:4px 2px 0}.gb{flex:1;text-align:center;min-width:40px;font-size:12px}.gbb{height:130px;display:flex;gap:3px;align-items:flex-end;justify-content:center}.gbb div{width:42%;border-radius:4px 4px 0 0;min-height:1px}
-  .gsel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 10px}.gsel select{padding:4px 8px;border:1px solid var(--line);border-radius:8px;font:inherit}
+  .gsel{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:4px 0 10px}.gtab{border:1px solid var(--line);background:#fff;border-radius:999px;padding:4px 12px;font:inherit;font-size:13px;cursor:pointer;color:var(--navy)}.gtab:hover{background:#eaf3fc}
+  .gsel select{padding:4px 8px;border:1px solid var(--line);border-radius:8px;font:inherit}
   .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
   .kpi{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px;border-top:4px solid var(--blue)}
   .kpi.main{border-top-color:var(--navy);background:linear-gradient(135deg,#12345e,#1d5aa0);color:#fff}
@@ -599,6 +600,13 @@ function openDetail(key) {
       ['N° HES', COLS.nHes[1](e)], ['Fecha HES', fdate(e.fHes) || '—'], ['HES se solicita a', esc(e.solic) || '—'], ['N° factura', esc(e.nFac) || '—'],
       ['Fecha factura', fdate(e.fFac) || '—'], ['Vence pago', fdate(e.vence) || '—'], ['Fecha pago', fdate(e.pago) || '—'], ['Cobro', COLS.cobro[1](e)], ['Qué falta', `<b>${esc(e.falta)}</b>`]];
     html = `<div class="tblwrap"><table>${f.map(([l, v]) => `<tr><td style="width:34%;color:var(--muted)">${l}</td><td>${v}</td></tr>`).join('')}</table></div>`;
+  } else if (kind === 'gest') {
+    const g = GSETS[arg]; if (!g) return; title = g.t; sub = g.s; html = gTablaDet(g.r, arg);
+  } else if (kind === 'gmes') {
+    const L = GEST || [], m = arg, tot = l => +(l.total || l.adj || l.oferta || 0);
+    const ad = L.filter(l => l.est === 'adjudicada' && gMes(l.fAdj || l.fEnv) === m), en = L.filter(l => gMes(l.fEnv) === m && +l.oferta && l.est !== 'en_estudio');
+    title = `Gestión de ${gMesTxt(m)}`; sub = `Adjudicado ${clp(ad.reduce((x, l) => x + tot(l), 0))} · ofertas enviadas ${clp(en.reduce((x, l) => x + (+l.oferta || 0), 0))}`;
+    html = `<h3 style="margin:4px 0 6px">Adjudicadas en ${gMesTxt(m)}</h3>${gTablaDet(ad, 'ma' + m)}<h3 style="margin:14px 0 6px">Ofertas enviadas en ${gMesTxt(m)}</h3>${gTablaDet(en, 'me' + m)}`;
   } else return;
   $('mTitle').innerHTML = `${esc(title)}<div class="msub">${esc(sub)}</div>`;
   $('mBody').innerHTML = html;
@@ -706,7 +714,17 @@ async function loadHistory(selectId) {
   await loadSnapshot(h.value);
 }
 var LIVE = false;
-let GEST = null, GPER = 'mes';
+let GEST = null, GPER = 'mes', GSETS = {};
+function gTablaDet(rows, key) {
+  const tot = l => +(l.total || l.adj || l.oferta || 0);
+  if (!rows.length) return '<div class="cap">Sin registros.</div>';
+  const sO = rows.reduce((x, l) => x + (+l.oferta || 0), 0), sA = rows.filter(l => l.est === 'adjudicada').reduce((x, l) => x + tot(l), 0);
+  return `<div class="tblwrap"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio</th><th>Estado</th><th>Envío</th><th>Adjudicación</th><th class="n">Oferta</th><th class="n">Adjudicado</th></tr></thead><tbody>
+    ${rows.map((l, i) => `<tr><td>${esc(l.cod || '—')}</td><td>${esc(l.mand || '')}</td><td>${esc(l.proy || '')}${l.arr ? ' · arriendo' : ''}</td><td>${esc(G_EST[l.est] || l.est)}${l.motivo ? `<div class="cap">${esc(l.motivo)}</div>` : ''}</td><td>${gFd(l.fEnv)}</td><td>${gFd(l.fAdj)}</td>
+      ${+l.oferta ? AMT(`g:${key}:o:${i}`, `Oferta ${l.cod || ''} ${l.mand || ''}`, +l.oferta) : '<td class="n">—</td>'}${l.est === 'adjudicada' ? AMT(`g:${key}:a:${i}`, `Adjudicado ${l.cod || ''} ${l.mand || ''}`, tot(l)) : '<td class="n">—</td>'}</tr>`).join('')}
+    <tr><td colspan="6"><b>Total (${rows.length})</b></td>${AMT(`g:${key}:o:tot`, 'Total ofertas', sO, true)}${AMT(`g:${key}:a:tot`, 'Total adjudicado', sA, true)}</tr></tbody></table></div>
+    <div class="cap" style="margin-top:6px">Pinche los montos para sumarlos en la calculadora (Shift + clic resta).</div>`;
+}
 const G_MES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
 const gMes = d => d ? String(d).slice(0, 7) : '', gMesTxt = m => m ? `${G_MES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}` : '';
 const gFd = d => d ? `${String(d).slice(8, 10)}-${String(d).slice(5, 7)}-${String(d).slice(0, 4)}` : '—';
@@ -726,21 +744,31 @@ function renderGestion() {
   const serie = meses.slice(-8).map(m => ({m, env: sum(L.filter(l => gMes(l.fEnv) === m && +l.oferta && l.est !== 'en_estudio'), l => +l.oferta), adj: sum(L.filter(l => l.est === 'adjudicada' && gMes(l.fAdj || l.fEnv) === m), tot)}));
   const mx = Math.max(1, ...serie.map(x => Math.max(x.env, x.adj)));
   const perTxt = GPER === 'mes' ? gMesTxt(gMes(hoy)) : GPER === 'anio' ? 'año ' + hoy.slice(0, 4) : GPER === 'todo' ? 'todo el registro' : gMesTxt(GPER);
-  const fila = l => `<tr><td>${esc(l.cod || '—')}</td><td>${esc(l.mand || '')}</td><td>${esc((l.proy || '').slice(0, 70))}${l.arr ? ' · arriendo' : ''}</td><td>${esc(G_EST[l.est] || l.est)}</td><td>${gFd(l.fEnv)}</td><td>${gFd(l.fAdj)}</td><td class="n">${+l.oferta ? clp(l.oferta) : '—'}</td><td class="n">${l.est === 'adjudicada' ? clp(tot(l)) : '—'}</td></tr>`;
+  const fila = l => `<tr><td>${esc(l.cod || '—')}</td><td>${esc(l.mand || '')}</td><td>${esc((l.proy || '').slice(0, 70))}${l.arr ? ' · arriendo' : ''}</td><td>${esc(G_EST[l.est] || l.est)}</td><td>${gFd(l.fEnv)}</td><td>${gFd(l.fAdj)}</td>${+l.oferta ? AMT('gs:o:' + (l.cod || '') + (l.proy || '').slice(0, 20), 'Oferta ' + (l.cod || '') + ' ' + (l.mand || ''), +l.oferta) : '<td class="n">—</td>'}${l.est === 'adjudicada' ? AMT('gs:a:' + (l.cod || '') + (l.proy || '').slice(0, 20), 'Adjudicado ' + (l.cod || '') + ' ' + (l.mand || ''), tot(l)) : '<td class="n">—</td>'}</tr>`;
   const tabla = (rows) => rows.length ? `<div class="tblwrap"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio</th><th>Estado</th><th>Envío</th><th>Adjudicación</th><th class="n">Oferta</th><th class="n">Adjudicado</th></tr></thead><tbody>${rows.map(fila).join('')}</tbody></table></div>` : '<div class="cap">Sin registros en este período.</div>';
   box.innerHTML = `<div class="card"><h2>Gestión comercial</h2><div class="cap">Responsable de la cartera comercial: <b>Alejandro Osorio Correa</b> · licitaciones y cotizaciones (montos netos, sin costos). El mes de venta es el de la adjudicación.</div>
     <div class="gsel noprint">Período: <select id="gPer"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.slice().reverse().map(m => `<option value="${m}">${gMesTxt(m)}</option>`).join('')}</select></div>
     <div class="kpis" style="margin-bottom:10px">
-      <div class="kpi ok"><div class="lab">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="val">${clp(vend)}</div><div class="note">${adj.length} adjudicación(es)${vend !== base ? ` · incluye ${mm(vend - base)} en prórrogas` : ''}</div></div>
-      <div class="kpi"><div class="lab">Ofertas enviadas · ${esc(perTxt)}</div><div class="val">${clp(sum(env, l => +l.oferta))}</div><div class="note">${env.length} oferta(s)</div></div>
-      <div class="kpi"><div class="lab">En espera de adjudicación (hoy)</div><div class="val">${clp(sum(esp, l => +l.oferta))}</div><div class="note">${esp.length} oferta(s)${pau.length ? ` · ${pau.length} en pausa (${mm(sum(pau, l => +l.oferta))})` : ''}</div></div>
-      <div class="kpi"><div class="lab">Tasa de adjudicación · ${esc(perTxt)}</div><div class="val">${res.length ? Math.round(100 * gan.length / res.length) + '%' : '—'}</div><div class="note">${gan.length} de ${res.length} resueltas</div></div>
-      <div class="kpi"><div class="lab">Licitaciones en preparación</div><div class="val">${L.filter(l => ['en_estudio', 'en_aprobacion'].includes(l.est)).length}</div><div class="note">aún sin oferta enviada</div></div>
+      <div class="kpi ok" data-d="gest:adj" tabindex="0" role="button"><div class="lab">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="val">${clp(vend)}</div><div class="note">${adj.length} adjudicación(es)${vend !== base ? ` · incluye ${mm(vend - base)} en prórrogas` : ''}<div class="more">Ver detalle ›</div></div></div>
+      <div class="kpi" data-d="gest:env" tabindex="0" role="button"><div class="lab">Ofertas enviadas · ${esc(perTxt)}</div><div class="val">${clp(sum(env, l => +l.oferta))}</div><div class="note">${env.length} oferta(s)<div class="more">Ver detalle ›</div></div></div>
+      <div class="kpi" data-d="gest:esp" tabindex="0" role="button"><div class="lab">En espera de adjudicación (hoy)</div><div class="val">${clp(sum(esp, l => +l.oferta))}</div><div class="note">${esp.length} oferta(s)${pau.length ? ` · ${pau.length} en pausa (${mm(sum(pau, l => +l.oferta))})` : ''}<div class="more">Ver detalle ›</div></div></div>
+      <div class="kpi" data-d="gest:res" tabindex="0" role="button"><div class="lab">Tasa de adjudicación · ${esc(perTxt)}</div><div class="val">${res.length ? Math.round(100 * gan.length / res.length) + '%' : '—'}</div><div class="note">${gan.length} de ${res.length} resueltas<div class="more">Ver detalle ›</div></div></div>
+      <div class="kpi" data-d="gest:prep" tabindex="0" role="button"><div class="lab">Licitaciones en preparación</div><div class="val">${L.filter(l => ['en_estudio', 'en_aprobacion'].includes(l.est)).length}</div><div class="note">aún sin oferta enviada<div class="more">Ver detalle ›</div></div></div>
     </div>
-    ${serie.length ? `<h3 style="margin:6px 0">Mes a mes: ofertas enviadas vs adjudicado</h3><div class="gbars">${serie.map(x => `<div class="gb"><div class="gbb"><div style="height:${Math.round(Math.sqrt(x.env / mx) * 100)}%;background:#9cc3ea" title="Enviado ${clp(x.env)}"></div><div style="height:${Math.round(Math.sqrt(x.adj / mx) * 100)}%;background:#1e8e3e" title="Adjudicado ${clp(x.adj)}"></div></div>${G_MES[+x.m.slice(5) - 1].slice(0, 3)}<div class="cap" style="font-size:10.5px;color:#1e8e3e">${x.adj ? mm(x.adj) : ''}</div><div class="cap" style="font-size:10px">${x.env ? 'env. ' + mm(x.env) : ''}</div></div>`).join('')}</div><div class="cap"><span style="display:inline-block;width:10px;height:10px;background:#9cc3ea"></span> Ofertas enviadas &nbsp; <span style="display:inline-block;width:10px;height:10px;background:#1e8e3e"></span> Adjudicado (con prórrogas)</div>` : ''}
+    <div class="gsel noprint" style="margin:-2px 0 12px">Ver: ${[['adj', 'Adjudicadas del período'], ['esp', 'En espera'], ['env', 'Enviadas del período'], ['noadj', 'No adjudicadas'], ['des', 'Desistidas'], ['prep', 'En preparación'], ['all', '📋 Todas']].map(([k, t]) => `<button type="button" class="gtab" data-d="gest:${k}">${t}</button>`).join('')}</div>
+    ${serie.length ? `<h3 style="margin:6px 0">Mes a mes: ofertas enviadas vs adjudicado</h3><div class="gbars">${serie.map(x => `<div class="gb" data-d="gmes:${x.m}" style="cursor:pointer" title="Ver ${gMesTxt(x.m)}"><div class="gbb"><div style="height:${Math.round(Math.sqrt(x.env / mx) * 100)}%;background:#9cc3ea" title="Enviado ${clp(x.env)}"></div><div style="height:${Math.round(Math.sqrt(x.adj / mx) * 100)}%;background:#1e8e3e" title="Adjudicado ${clp(x.adj)}"></div></div>${G_MES[+x.m.slice(5) - 1].slice(0, 3)}<div class="cap" style="font-size:10.5px;color:#1e8e3e">${x.adj ? mm(x.adj) : ''}</div><div class="cap" style="font-size:10px">${x.env ? 'env. ' + mm(x.env) : ''}</div></div>`).join('')}</div><div class="cap"><span style="display:inline-block;width:10px;height:10px;background:#9cc3ea"></span> Ofertas enviadas &nbsp; <span style="display:inline-block;width:10px;height:10px;background:#1e8e3e"></span> Adjudicado (con prórrogas)</div>` : ''}
     <h3 style="margin:14px 0 6px">Adjudicadas · ${esc(perTxt)}</h3>${tabla(adj)}
     <h3 style="margin:14px 0 6px">Ofertas en espera de adjudicación</h3>${tabla(esp.concat(pau))}
   </div>`;
+  const prep = L.filter(l => ['en_estudio', 'en_aprobacion'].includes(l.est));
+  GSETS = {adj: {t: `Vendido (adjudicado) · ${perTxt}`, s: 'Adjudicaciones del período, según la fecha de adjudicación', r: adj},
+    env: {t: `Ofertas enviadas · ${perTxt}`, s: 'Ofertas enviadas en el período (cualquier resultado)', r: env},
+    esp: {t: 'En espera de adjudicación (hoy)', s: 'Ofertas enviadas que esperan respuesta; al final, las que están en pausa', r: esp.concat(pau)},
+    res: {t: `Resultado de las ofertas · ${perTxt}`, s: `${gan.length} adjudicadas de ${res.length} resueltas (adjudicadas, no adjudicadas y descartadas)`, r: res},
+    prep: {t: 'Licitaciones en preparación', s: 'En estudio o en aprobación, aún sin oferta enviada', r: prep},
+    noadj: {t: 'No adjudicadas', s: 'Ofertas no adjudicadas o descartadas por el mandante (todo el registro)', r: L.filter(l => ['no_adjudicada', 'descartada'].includes(l.est))},
+    des: {t: 'Desistidas', s: 'Procesos en que Terracop no presentó oferta (todo el registro)', r: L.filter(l => l.est === 'desistida')},
+    all: {t: 'Todas las licitaciones y ofertas', s: `${L.length} procesos del registro comercial, del más reciente al más antiguo`, r: L.slice()}};
   $('gPer').value = GPER; $('gPer').onchange = () => { GPER = $('gPer').value; renderGestion(); };
 }
 async function loadLive() {
