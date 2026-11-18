@@ -2051,7 +2051,7 @@ function enPeriodo(d) {
 }
 function kpisGestion(L) {
   const adj = L.filter(l => l.estado === 'adjudicada' && enPeriodo(l.fecha_adjudicacion || l.fecha_envio));
-  const env = L.filter(l => ['enviada', 'en_pausa', 'adjudicada', 'no_adjudicada', 'descartada'].includes(l.estado) && enPeriodo(l.fecha_envio || l.fecha_inicio) && +l.monto_oferta);
+  const env = L.filter(l => ['enviada', 'adjudicada', 'no_adjudicada', 'descartada'].includes(l.estado) && enPeriodo(l.fecha_envio || l.fecha_inicio) && +l.monto_oferta);
   const espera = L.filter(l => l.estado === 'enviada'), pausa = L.filter(l => l.estado === 'en_pausa');
   const resueltas = L.filter(l => ['adjudicada', 'no_adjudicada', 'descartada'].includes(l.estado) && enPeriodo(l.fecha_adjudicacion || l.fecha_envio || l.fecha_inicio));
   const ganadas = resueltas.filter(l => l.estado === 'adjudicada');
@@ -2069,7 +2069,7 @@ function vGestion() {
   const perTxt = GF.per === 'mes' ? mesTxt(mesDe(hoy)) : GF.per === 'anio' ? 'año ' + hoy.slice(0, 4) : GF.per === 'todo' ? 'todo el registro' : mesTxt(GF.per);
   // mes a mes (últimos 8 meses con datos)
   const mm = [...new Set(L.flatMap(l => [mesDe(l.fecha_adjudicacion), mesDe(l.fecha_envio)]).filter(Boolean))].sort().slice(-8);
-  const serie = mm.map(m => ({m, env: K.sum(L.filter(l => mesDe(l.fecha_envio) === m && +l.monto_oferta && l.estado !== 'en_estudio'), l => +l.monto_oferta), adj: K.sum(L.filter(l => l.estado === 'adjudicada' && mesDe(l.fecha_adjudicacion || l.fecha_envio) === m), montoAdj)}));
+  const serie = mm.map(m => ({m, env: K.sum(L.filter(l => mesDe(l.fecha_envio) === m && +l.monto_oferta && !['en_estudio', 'en_pausa'].includes(l.estado)), l => +l.monto_oferta), adj: K.sum(L.filter(l => l.estado === 'adjudicada' && mesDe(l.fecha_adjudicacion || l.fecha_envio) === m), montoAdj)}));
   const mx = Math.max(1, ...serie.map(s => Math.max(s.env, s.adj)));
   const abiertas = ['en_estudio', 'en_aprobacion', 'enviada', 'en_pausa'];
   const lista = L.filter(l => (GF.est === 'todas' || (GF.est === 'abiertas' ? abiertas.includes(l.estado) : l.estado === GF.est)) && (!GF.q || normTxt([l.codigo, l.mandante, l.proyecto].join(' ')).includes(normTxt(GF.q))))
