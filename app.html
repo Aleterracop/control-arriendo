@@ -590,9 +590,27 @@ function vArriendo(id) {
     if (a.modalidad === 'global') { T.innerHTML = '<div class="card">Este servicio es a suma global: no lleva horómetro ni conteo de días.</div>'; return; }
     const esHora = a.modalidad === 'hora', last = c.hor[c.hor.length - 1], lastH = c.hor.slice().reverse().find(h => h.h_fin != null);
     const noCob = c.hor.filter(h => ['falla_terracop', 'taller'].includes(h.estado)).length;
-    let verH; try { verH = localStorage.getItem('horo_' + a.id); } catch (e) {}
+    let verH, accH; try { verH = localStorage.getItem('horo_' + a.id); accH = localStorage.getItem('acch_' + a.id); } catch (e) {}
     const accesorio = /martillo|accesorio|ripper|balde|placa compactadora|chancador/i.test(a.descripcion || '');
     const sinHoro = !esHora && (verH ? verH === '0' : (accesorio || !c.hor.some(h => h.h_ini != null)));
+    if (accesorio && !esHora && accH !== '1') {   // accesorio (martillo, etc.): solo fechas de uso efectivo; se cobra el mínimo por período
+      const term = a.estado === 'terminado' && a.fecha_fin ? a.fecha_fin : null, hasta = term || todayISO();
+      const usoDias = a.fecha_inicio ? Math.max(0, days(a.fecha_inicio, hasta) + 1) : 0, per = a.modalidad === 'mes' ? 30 * (+a.base_cobro || 1) : (+a.base_cobro || 30);
+      const nPer = Math.max(1, Math.ceil(usoDias / per)), cobrar = nPer * per;
+      T.innerHTML = `<div class="card"><h2 style="margin:0 0 6px">🔧 Uso efectivo del accesorio</h2>
+        <div class="small muted" style="margin-bottom:10px">Este equipo no lleva horómetro ni reportes diarios. Solo se registran las fechas de uso, y se cobra siempre el mínimo de <b>${per} días por período</b>, aunque se use menos.</div>
+        <div class="kpis" style="margin:0">
+          <div class="kpi"><div class="l">Desde (instalación)</div><div class="v">${fd(a.fecha_inicio) || '—'}</div></div>
+          <div class="kpi"><div class="l">Hasta (retiro)</div><div class="v">${term ? fd(term) : 'En uso'}</div><div class="small muted">${term ? 'servicio terminado' : 'al día de hoy ' + fd(todayISO())}</div></div>
+          <div class="kpi"><div class="l">Días de uso efectivo</div><div class="v">${usoDias}</div></div>
+          <div class="kpi g"><div class="l">Días a cobrar</div><div class="v">${cobrar}</div><div class="small muted">${nPer} período(s) × ${per} días mínimo</div></div>
+        </div>
+        <div class="row" style="margin-top:12px;gap:8px">${term ? '<span class="small">Para corregir la fecha de retiro, use <b>Editar</b> del arriendo (campo "Vigente hasta").</span>' : '<button class="pri" id="accRet">Registrar retiro (fin del uso)</button><span class="small muted">Marca la fecha en que se retiró el equipo y crea el EDP final con el mínimo de días.</span>'}
+          <span class="sp"></span><a href="#" id="accHoro" class="small">Este equipo sí usa horómetro</a></div></div>`;
+      if ($('accRet')) $('accRet').onclick = () => formTerminar(a);
+      $('accHoro').onclick = e => { e.preventDefault(); try { localStorage.setItem('acch_' + a.id, '1'); localStorage.setItem('horo_' + a.id, '1'); } catch (er) {} vArriendo(a.id); };
+      return;
+    }
     T.classList.toggle('nohoro', sinHoro);
     T.innerHTML = `${esHora ? '' : `<div class="small" style="margin:0 0 8px">${sinHoro ? `🔧 Este equipo se controla <b>solo por días</b> (sin horómetro${accesorio ? ', es un accesorio' : ''}). <a href="#" id="hTog">Mostrar horómetro</a>` : `<a href="#" id="hTog">Este equipo no usa horómetro: ocultarlo</a>`}</div>`}${esHora ? '' : `<div class="card"><div class="row"><h2 style="margin:0">¿Cómo se cuentan los días?</h2><span class="sp"></span>
         <select id="hCnt" style="width:auto"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos (calendario, desde el inicio)</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte (solo los días registrados abajo)</option></select></div>
@@ -629,6 +647,11 @@ function vArriendo(id) {
     T.innerHTML = `<div class="card tw"><table><thead><tr><th>N°</th><th>Tipo</th><th class="n">Cantidad</th><th class="n">Tarifa</th><th class="n">Monto</th><th>Desde</th><th>Hasta</th><th>Estado</th><th>OC</th><th></th></tr></thead><tbody>
       ${c.pers.map(p => `<tr><td>${p.n}</td><td>${p.tipo === 'inicial' ? 'Inicial' : 'Prórroga'}</td><td class="n">${nf(p.cantidad, 1)}</td><td class="n">${clp(p.tarifa)}</td><td class="n">${clp((+p.cantidad || 0) * (+p.tarifa || 0))}</td><td>${fd(p.desde)}</td><td>${fd(p.hasta)}</td><td>${p.estado === 'con_oc' ? '<span class="chip c-blue">Con OC</span>' : '<span class="chip c-orange">Sin OC</span>'}</td><td>${esc(p.oc || '')}</td><td><button class="sm" data-ep="${p.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="10" class="muted">Sin períodos.</td></tr>'}
       </tbody></table></div>`;
+    T.querySelectorAll('tbody tr').forEach((tr, i) => { const p = c.pers[i]; if (!p || p.tipo !== 'prorroga' || p.estado !== 'con_oc' || D.sinLic) return;
+      const td = tr.lastElementChild; td.insertAdjacentHTML('beforeend', licDePeriodo(p) ? ' <span class="chip c-green" title="Registrada como venta en Gestión">📊 en Gestión</span>' : ` <button class="sm" data-gp="${p.id}" title="Registrar esta prórroga como venta en Gestión">📊 Registrar venta</button>`); });
+    T.querySelectorAll('[data-gp]').forEach(b => b.onclick = () => { const p = byId('periodos', b.dataset.gp);
+      if (!confirm(`¿Registrar la prórroga N°${p.n - 1} (${clp((+p.cantidad || 0) * (+p.tarifa || 0))}, OC ${p.oc || ''}) como venta en Gestión?\n\nOjo: si esta prórroga ya está sumada en una licitación importada del Excel (columna "total con prórrogas"), no la registre para no contarla dos veces.`)) return;
+      guardar(() => regProrroga(a, p), 'Prórroga registrada como venta en Gestión'); });
     T.querySelectorAll('[data-ep]').forEach(b => b.onclick = () => formPeriodo(a, byId('periodos', b.dataset.ep)));
   } else if (tabA === 'edp') {
     T.innerHTML = `<div class="card tw"><table><thead><tr><th>N°</th><th>Período</th><th class="n">Cant.</th><th class="n">Monto neto</th><th>Estado</th><th>Envío</th><th>${a.requiere_hes ? 'HES' : 'Aprobación'}</th><th>Finanzas</th><th></th></tr></thead><tbody>
@@ -792,6 +815,16 @@ function formPeriodo(a, p) {
   $('pOk').onclick = () => guardar(() => upd('periodos', p.id, {cantidad: num(val('pC')), tarifa: num(val('pT')), desde: val('pD') || null, hasta: val('pH') || null, estado: val('pO') ? 'con_oc' : val('pE'), oc: val('pO') || null, notas: val('pN') || null}), 'Período guardado');
 }
 
+/* prórroga con OC → venta en el registro comercial (Gestión) */
+const licDePeriodo = p => (D.licitaciones || []).find(l => (l.notas || '').includes('[per:' + p.id + ']'));
+async function regProrroga(a, p) {
+  if (D.sinLic || !p || licDePeriodo(p)) return;
+  const f = byId('flota', a.flota_id) || {}, m = mandante(a) || {}, monto = Math.round((+p.cantidad || 0) * (+p.tarifa || 0));
+  const r = await ins('licitaciones', {codigo: (a.cotizacion ? a.cotizacion.split(' ')[0] + '-' : '') + 'P' + p.n, mandante: m.nombre || null, proyecto: `Prórroga N°${p.n - 1} · ${a.descripcion}`, tipo_servicio: 'Arriendo de maquinaria', unidad: 'Terracop', responsable: 'Alejandro Osorio',
+    estado: 'adjudicada', fecha_envio: p.desde && p.desde < todayISO() ? p.desde : todayISO(), fecha_adjudicacion: p.desde && p.desde < todayISO() ? p.desde : todayISO(), monto_oferta: monto, monto_adjudicado: monto, monto_total: monto, es_arriendo: true, origen: 'app',
+    notas: `OC ${p.oc || ''} · ${f.patente || ''} [per:${p.id}]`});
+  if (r) D.licitaciones.push(r);
+}
 function formProrroga(a) {
   const c = calc(a), lastP = c.pers[c.pers.length - 1];
   const desde = a.fecha_fin ? addDays(a.fecha_fin, 1) : todayISO();
@@ -806,7 +839,8 @@ function formProrroga(a) {
   $('rCan').onclick = closeModal;
   $('rOk').onclick = () => guardar(async () => {
     const oc = val('rO');
-    await ins('periodos', {arriendo_id: a.id, n: (lastP ? lastP.n : 0) + 1, tipo: 'prorroga', cantidad: num(val('rC')), tarifa: num(val('rT')), desde: val('rD') || null, hasta: val('rH') || null, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
+    const np = await ins('periodos', {arriendo_id: a.id, n: (lastP ? lastP.n : 0) + 1, tipo: 'prorroga', cantidad: num(val('rC')), tarifa: num(val('rT')), desde: val('rD') || null, hasta: val('rH') || null, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
+    if (oc && np) await regProrroga(a, np);
     await upd('arriendos', a.id, {fecha_fin: val('rH') || a.fecha_fin});
   }, 'Prórroga creada');
 }
@@ -819,14 +853,14 @@ function formOC(a) {
     <div><label>N° OC / SolPed</label><input id="oN"></div></div>
     <div class="mf"><button id="oCan">Cancelar</button><button class="pri" id="oOk">Guardar</button></div>`);
   $('oCan').onclick = closeModal;
-  $('oOk').onclick = () => { if (!val('oN')) return alert('Escriba el N° de OC.'); guardar(async () => { await upd('periodos', val('oP'), {estado: 'con_oc', oc: val('oN')}); if (a.estado === 'palabra') await upd('arriendos', a.id, {estado: 'con_oc'}); }, 'OC registrada'); };
+  $('oOk').onclick = () => { if (!val('oN')) return alert('Escriba el N° de OC.'); guardar(async () => { const pp = await upd('periodos', val('oP'), {estado: 'con_oc', oc: val('oN')}); if (pp && pp.tipo === 'prorroga') await regProrroga(a, pp); if (a.estado === 'palabra') await upd('arriendos', a.id, {estado: 'con_oc'}); }, 'OC registrada'); };
 }
 
 function formTerminar(a) {
   const c = calc(a);
   modal(`<h3>Terminar servicio · ${esc(a.descripcion)}</h3>
     <p>Se marca como <b>terminado</b>. Luego cree el <b>EDP final</b>: incluirá lo pendiente${(+a.desmovilizacion || 0) && !c.desmovCobrada ? ` + la <b>desmovilización ${clp(a.desmovilizacion)}</b>` : ''}.</p>
-    <div class="f"><div><label>Fecha de término</label><input type="date" id="tF" value="${todayISO()}"></div></div>
+    <div class="f"><div><label>${/martillo|accesorio|ripper|balde|placa compactadora|chancador/i.test(a.descripcion || '') ? 'Fecha de retiro del equipo' : 'Fecha de término'}</label><input type="date" id="tF" value="${todayISO()}"></div></div>
     <div class="mf"><button id="tCan">Cancelar</button><button class="pri" id="tOk">Terminar y crear EDP final</button></div>`);
   $('tCan').onclick = closeModal;
   $('tOk').onclick = async () => {
