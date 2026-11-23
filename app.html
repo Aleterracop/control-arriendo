@@ -568,7 +568,7 @@ function vArriendo(id) {
       <button class="sm pri" id="bEdp">+ Nuevo EDP</button>
     </div>
   </div>
-  <div class="tabs">${[['resumen', 'Resumen'], ['horo', a.modalidad === 'hora' ? 'Horómetros' : 'Días y reportes'], ['per', 'Períodos'], ['edp', 'EDP y HES']].map(([k, l]) => `<button data-t="${k}" class="${tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="tabs">${[['resumen', 'Resumen'], ['horo', a.modalidad === 'hora' ? 'Horómetros' : /martillo|accesorio|ripper|balde|placa compactadora|chancador/i.test(a.descripcion || '') ? 'Uso efectivo' : 'Días y reportes'], ['per', 'Períodos'], ['edp', 'EDP y HES']].map(([k, l]) => `<button data-t="${k}" class="${tabA === k ? 'on' : ''}">${l}</button>`).join('')}</div>
   <div id="tabc"></div>`;
   document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { tabA = b.dataset.t; vArriendo(id); });
   $('edA').onclick = () => formArriendo(a);
@@ -595,16 +595,24 @@ function vArriendo(id) {
     const sinHoro = !esHora && (verH ? verH === '0' : (accesorio || !c.hor.some(h => h.h_ini != null)));
     if (accesorio && !esHora && accH !== '1') {   // accesorio (martillo, etc.): solo fechas de uso efectivo; se cobra el mínimo por período
       const term = a.estado === 'terminado' && a.fecha_fin ? a.fecha_fin : null, hasta = term || todayISO();
-      const usoDias = a.fecha_inicio ? Math.max(0, days(a.fecha_inicio, hasta) + 1) : 0, per = a.modalidad === 'mes' ? 30 * (+a.base_cobro || 1) : (+a.base_cobro || 30);
-      const nPer = Math.max(1, Math.ceil(usoDias / per)), cobrar = nPer * per;
+      const usoDias = a.fecha_inicio ? Math.max(0, days(a.fecha_inicio, hasta) + 1) : 0, esMes = a.modalidad === 'mes', bm = Math.max(1, +a.base_cobro || 1);
+      const addM = (iso, k) => { const [y, m, d] = iso.split('-').map(Number), last = new Date(y, m - 1 + k + 1, 0).getDate(), dt = new Date(y, m - 1 + k, Math.min(d, last)); return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'); };
+      const addD = (iso, k) => { const dt = new Date(iso + 'T12:00:00'); dt.setDate(dt.getDate() + k); return dt.toISOString().slice(0, 10); };
+      const per = esMes ? bm : (+a.base_cobro || 30);   // mes: períodos de bm meses calendario; día: períodos de N días
+      let nPer = 1; if (a.fecha_inicio) while (nPer < 120 && (esMes ? addM(a.fecha_inicio, nPer * per) : addD(a.fecha_inicio, nPer * per)) <= hasta) nPer++;
+      const iniAct = a.fecha_inicio ? (esMes ? addM(a.fecha_inicio, (nPer - 1) * per) : addD(a.fecha_inicio, (nPer - 1) * per)) : null;
+      const finAct = a.fecha_inicio ? addD(esMes ? addM(a.fecha_inicio, nPer * per) : addD(a.fecha_inicio, nPer * per), -1) : null;
+      const uCob = esMes ? nPer * per : nPer * per, uTxt = esMes ? (uCob === 1 ? '1 mes' : uCob + ' meses') : uCob + ' días', montoAcc = uCob * (+a.tarifa || 0);
+      const minTxt = esMes ? (per === 1 ? '1 mes' : per + ' meses') : per + ' días';
       T.innerHTML = `<div class="card"><h2 style="margin:0 0 6px">🔧 Uso efectivo del accesorio</h2>
-        <div class="small muted" style="margin-bottom:10px">Este equipo no lleva horómetro ni reportes diarios. Solo se registran las fechas de uso, y se cobra siempre el mínimo de <b>${per} días por período</b>, aunque se use menos.</div>
+        <div class="small muted" style="margin-bottom:10px">Este equipo no lleva horómetro ni reportes diarios. Solo se registran las fechas de uso, y se cobra siempre el mínimo de <b>${minTxt} por período</b>, aunque se use menos. Si el uso pasa a un período nuevo, se cobra ese período completo.</div>
         <div class="kpis" style="margin:0">
           <div class="kpi"><div class="l">Desde (instalación)</div><div class="v">${fd(a.fecha_inicio) || '—'}</div></div>
           <div class="kpi"><div class="l">Hasta (retiro)</div><div class="v">${term ? fd(term) : 'En uso'}</div><div class="small muted">${term ? 'servicio terminado' : 'al día de hoy ' + fd(todayISO())}</div></div>
           <div class="kpi"><div class="l">Días de uso efectivo</div><div class="v">${usoDias}</div></div>
-          <div class="kpi g"><div class="l">Días a cobrar</div><div class="v">${cobrar}</div><div class="small muted">${nPer} período(s) × ${per} días mínimo</div></div>
+          <div class="kpi g"><div class="l">A cobrar</div><div class="v">${uTxt}</div><div class="small muted">${clp(montoAcc)} neto · ${nPer} período(s)</div></div>
         </div>
+        ${iniAct ? `<div class="small" style="margin-top:8px">Período actual (${nPer}): <b>${fd(iniAct)} al ${fd(finAct)}</b>.${!term && nPer > 1 ? ' <span style="color:#b45309">⚠️ El uso ya pasó al período ' + nPer + ': se cobra completo. Si corresponde, registre la prórroga/OC en Períodos.</span>' : ''}${!term && nPer === 1 ? ' Si se retira hasta el ' + fd(finAct) + ', se cobra solo ' + minTxt + '.' : ''}</div>` : ''}
         <div class="row" style="margin-top:12px;gap:8px">${term ? '<span class="small">Para corregir la fecha de retiro, use <b>Editar</b> del arriendo (campo "Vigente hasta").</span>' : '<button class="pri" id="accRet">Registrar retiro (fin del uso)</button><span class="small muted">Marca la fecha en que se retiró el equipo y crea el EDP final con el mínimo de días.</span>'}
           <span class="sp"></span><a href="#" id="accHoro" class="small">Este equipo sí usa horómetro</a></div></div>`;
       if ($('accRet')) $('accRet').onclick = () => formTerminar(a);
