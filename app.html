@@ -341,7 +341,7 @@ function alertas() {
       if (c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último horómetro registrado el ${fd(c.ultimo)}. ${link}`});
     }
     if (activo && a.modalidad !== 'hora' && a.conteo_dias === 'reportados' && c.ultimo && days(c.ultimo, hoy) > 2) L.push({lv: 'blue', ic: '📋', t: `<b>${nom}</b>: último reporte diario registrado el ${fd(c.ultimo)}. ${link}`});
-    if (activo && c.diasFin != null) {
+    if (activo && c.diasFin != null && a.modalidad !== 'hora') {   // por hora: el término lo marcan las horas, no la fecha
       if (c.diasFin < 0) L.push({lv: 'red', ic: '⏰', t: `<b>${nom}</b> (${m}): el período venció el ${fd(a.fecha_fin)}. Registrar prórroga o terminar servicio. ${link}`});
       else if (c.diasFin <= uD) L.push({lv: 'amber', ic: '⏳', t: `<b>${nom}</b> (${m}): termina el ${fd(a.fecha_fin)} (en ${c.diasFin} días). Consultar prórroga o término. ${link}`});
     }
@@ -365,8 +365,8 @@ function alertas() {
       L.push({lv: 'red', ic: '🚚', t: `<b>${nom}</b>: servicio terminado, <b>desmovilización ${clp(a.desmovilizacion)} sin cobrar</b>. Incluirla en el EDP final. ${link}`});
   });
   // cotizaciones adjudicadas que quedaron sin arriendo
-  (D.cotizaciones || []).filter(c => c.estado === 'adjudicada' && (!c.arriendo_id || !byId('arriendos', c.arriendo_id))).forEach(c => {
-    L.push({lv: 'orange', ic: '⚠️', t: `<b>Cotización ${esc(nCot(c))}</b> figura <b>adjudicada pero sin arriendo</b> (quizás se borró el arriendo). Use "Pasar a arriendo", cámbiela de estado o elimínela si era una prueba. <a href="#c-${c.id}">Abrir</a>`});
+  (D.cotizaciones || []).filter(c => c.estado === 'adjudicada' && !(c.notas || '').includes('[sin_arriendo]') && (!c.arriendo_id || !byId('arriendos', c.arriendo_id))).forEach(c => {
+    L.push({lv: 'orange', ic: '⚠️', t: `<b>Cotización ${esc(nCot(c))}</b> figura <b>adjudicada pero sin arriendo</b> (quizás se borró el arriendo). Use "Pasar a arriendo", cámbiela de estado o elimínela si era una prueba. <a href="#c-${c.id}">Abrir</a> · <a href="#" data-sinarr="${c.id}">Es un servicio, no un arriendo (quitar aviso)</a>`});
   });
   // cotizaciones enviadas que pasaron su validez
   (D.cotizaciones || []).filter(c => c.estado === 'enviada').forEach(c => {
@@ -428,6 +428,8 @@ function vInicio() {
   <div class="card"><div class="row"><h2 style="margin:0">Qué hacer hoy</h2><span class="sp"></span><span class="muted small">${L.length} aviso(s) · ${fd(todayISO())}</span></div>
   <div style="margin-top:10px">${L.length ? L.map(x => `<div class="al ${x.lv}"><div class="ic">${x.ic}</div><div class="tx">${x.t}</div></div>`).join('') : '<div class="msg ok">Todo al día. No hay avisos.</div>'}</div></div>`;
   $('hNuevo').onclick = () => formArriendo();
+  document.querySelectorAll('[data-sinarr]').forEach(b => b.onclick = e => { e.preventDefault(); const c = byId('cotizaciones', b.dataset.sinarr); if (!c || !confirm(`¿La cotización ${nCot(c)} es un servicio que no lleva arriendo de máquina?\n\nSe quita este aviso. La venta sigue contando en Gestión.`)) return;
+    guardar(() => upd('cotizaciones', c.id, {notas: ((c.notas || '') + ' [sin_arriendo]').trim()}), 'Aviso quitado'); });
 }
 
 /* ---------------- Vista: Arriendos ---------------- */
