@@ -593,7 +593,7 @@ function vArriendo(id) {
     let verH, accH; try { verH = localStorage.getItem('horo_' + a.id); accH = localStorage.getItem('acch_' + a.id); } catch (e) {}
     const accesorio = /martillo|accesorio|ripper|balde|placa compactadora|chancador/i.test(a.descripcion || '');
     const sinHoro = !esHora && (verH ? verH === '0' : (accesorio || !c.hor.some(h => h.h_ini != null)));
-    if (accesorio && !esHora && accH !== '1') {   // accesorio (martillo, etc.): solo fechas de uso efectivo; se cobra el mínimo por período
+    if (accesorio && !esHora) {   // accesorio (martillo, etc.): solo fechas de uso efectivo; se cobra el mínimo por período
       const term = a.estado === 'terminado' && a.fecha_fin ? a.fecha_fin : null, hasta = term || todayISO();
       const usoDias = a.fecha_inicio ? Math.max(0, days(a.fecha_inicio, hasta) + 1) : 0, esMes = a.modalidad === 'mes', bm = Math.max(1, +a.base_cobro || 1);
       const addM = (iso, k) => { const [y, m, d] = iso.split('-').map(Number), last = new Date(y, m - 1 + k + 1, 0).getDate(), dt = new Date(y, m - 1 + k, Math.min(d, last)); return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0'); };
@@ -613,10 +613,8 @@ function vArriendo(id) {
           <div class="kpi g"><div class="l">A cobrar</div><div class="v">${uTxt}</div><div class="small muted">${clp(montoAcc)} neto · ${nPer} período(s)</div></div>
         </div>
         ${iniAct ? `<div class="small" style="margin-top:8px">Período actual (${nPer}): <b>${fd(iniAct)} al ${fd(finAct)}</b>.${!term && nPer > 1 ? ' <span style="color:#b45309">⚠️ El uso ya pasó al período ' + nPer + ': se cobra completo. Si corresponde, registre la prórroga/OC en Períodos.</span>' : ''}${!term && nPer === 1 ? ' Si se retira hasta el ' + fd(finAct) + ', se cobra solo ' + minTxt + '.' : ''}</div>` : ''}
-        <div class="row" style="margin-top:12px;gap:8px">${term ? '<span class="small">Para corregir la fecha de retiro, use <b>Editar</b> del arriendo (campo "Vigente hasta").</span>' : '<button class="pri" id="accRet">Registrar retiro (fin del uso)</button><span class="small muted">Marca la fecha en que se retiró el equipo y crea el EDP final con el mínimo de días.</span>'}
-          <span class="sp"></span><a href="#" id="accHoro" class="small">Este equipo sí usa horómetro</a></div></div>`;
+        <div class="row" style="margin-top:12px;gap:8px">${term ? '<span class="small">Para corregir la fecha de retiro, use <b>Editar</b> del arriendo (campo "Vigente hasta").</span>' : '<button class="pri" id="accRet">Registrar retiro (fin del uso)</button><span class="small muted">Marca la fecha en que se retiró el equipo y crea el EDP final con el mínimo de días.</span>'}</div></div>`;
       if ($('accRet')) $('accRet').onclick = () => formTerminar(a);
-      $('accHoro').onclick = e => { e.preventDefault(); try { localStorage.setItem('acch_' + a.id, '1'); localStorage.setItem('horo_' + a.id, '1'); } catch (er) {} vArriendo(a.id); };
       return;
     }
     T.classList.toggle('nohoro', sinHoro);
