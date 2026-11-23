@@ -125,6 +125,7 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 @media print{#calc{display:none}}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
 .gbars{display:flex;gap:10px;align-items:flex-end;height:170px;padding:4px 2px 0}.gb{flex:1;text-align:center;min-width:40px}.gbb{height:130px;display:flex;gap:3px;align-items:flex-end;justify-content:center}.gbb div{width:42%;border-radius:4px 4px 0 0;min-height:1px}
+.nohoro .hcolin{display:none}.nohoro table th:nth-child(n+3):nth-child(-n+6),.nohoro table td:nth-child(n+3):nth-child(-n+6){display:none}
 .cpwrap{overflow-x:auto;padding:4px 0 20px}
 .cptool{position:sticky;top:6px;z-index:25;padding:10px 14px;box-shadow:0 6px 18px rgba(20,60,110,.18)}
 .cp{font-family:Calibri,Arial,sans-serif;color:#1b2430;font-size:14.5px;line-height:1.35}
@@ -256,6 +257,7 @@ async function loadAll() {
   D.hasFallas = D.arriendos.some(a => 'descuenta_fallas' in a);
   D.hasPropiedad = D.flota.some(f => 'propiedad' in f);
   D.hasDoc = D.cotizaciones.some(c => 'doc' in c);
+  D.hasCC = D.cotizaciones.some(c => 'compartidos' in c);
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -572,10 +574,10 @@ function vArriendo(id) {
   $('edA').onclick = () => formArriendo(a);
   $('bEdp').onclick = () => formEdp(a);
   if ($('bPro')) { $('bPro').onclick = () => formProrroga(a); $('bOc').onclick = () => formOC(a); $('bFin').onclick = () => formTerminar(a); }
-  const T = $('tabc');
+  const T = $('tabc'); T.classList.remove('nohoro');
   if (tabA === 'resumen') {
     T.innerHTML = `<div class="kpis">
-      <div class="kpi"><div class="l">${a.modalidad === 'hora' ? 'Horas registradas' : 'Días transcurridos'}</div><div class="v">${verU(a, c.avance, 1)}</div></div>
+      <div class="kpi"><div class="l">${a.modalidad === 'hora' ? 'Horas registradas' : 'Días transcurridos'}</div><div class="v">${verU(a, c.avance, 1)}</div>${a.modalidad !== 'global' ? `<div class="small muted">mínimo por período: <b>${verU(a, c.base)} ${uVer(a)}</b>${c.pend < c.base ? ` · si termina antes, se cobra igual el mínimo` : ''}</div>` : ''}</div>
       <div class="kpi"><div class="l">En EDP${a.modalidad === 'mes' ? ' (días)' : ''}</div><div class="v">${verU(a, c.enEdp, 1)}</div></div>
       <div class="kpi ${c.pend >= c.base ? 'r' : ''}"><div class="l">Pendiente de cobro${a.modalidad === 'mes' ? ' (días)' : ''}</div><div class="v">${verU(a, c.pend, 1)}</div></div>
       <div class="kpi g"><div class="l">Enviado en EDP</div><div class="v">${clp(c.enviado)}</div></div>
@@ -588,7 +590,11 @@ function vArriendo(id) {
     if (a.modalidad === 'global') { T.innerHTML = '<div class="card">Este servicio es a suma global: no lleva horómetro ni conteo de días.</div>'; return; }
     const esHora = a.modalidad === 'hora', last = c.hor[c.hor.length - 1], lastH = c.hor.slice().reverse().find(h => h.h_fin != null);
     const noCob = c.hor.filter(h => ['falla_terracop', 'taller'].includes(h.estado)).length;
-    T.innerHTML = `${esHora ? '' : `<div class="card"><div class="row"><h2 style="margin:0">¿Cómo se cuentan los días?</h2><span class="sp"></span>
+    let verH; try { verH = localStorage.getItem('horo_' + a.id); } catch (e) {}
+    const accesorio = /martillo|accesorio|ripper|balde|placa compactadora|chancador/i.test(a.descripcion || '');
+    const sinHoro = !esHora && (verH ? verH === '0' : (accesorio || !c.hor.some(h => h.h_ini != null)));
+    T.classList.toggle('nohoro', sinHoro);
+    T.innerHTML = `${esHora ? '' : `<div class="small" style="margin:0 0 8px">${sinHoro ? `🔧 Este equipo se controla <b>solo por días</b> (sin horómetro${accesorio ? ', es un accesorio' : ''}). <a href="#" id="hTog">Mostrar horómetro</a>` : `<a href="#" id="hTog">Este equipo no usa horómetro: ocultarlo</a>`}</div>`}${esHora ? '' : `<div class="card"><div class="row"><h2 style="margin:0">¿Cómo se cuentan los días?</h2><span class="sp"></span>
         <select id="hCnt" style="width:auto"><option value="corridos" ${a.conteo_dias !== 'reportados' ? 'selected' : ''}>Días corridos (calendario, desde el inicio)</option><option value="reportados" ${a.conteo_dias === 'reportados' ? 'selected' : ''}>Días con reporte (solo los días registrados abajo)</option></select></div>
         <div class="small muted" style="margin-top:6px">${a.conteo_dias === 'reportados' ? `Se cobran los días registrados abajo.` : `Se cuentan solos desde el ${fd(a.fecha_inicio)}.`} Días cobrables: <b>${verU(a, c.avance)}</b>${noCob && a.descuenta_fallas ? ` (se descuentan ${noCob} día(s) de falla Terracop o taller)` : ''}.${c.horasReg ? ` Horas registradas en horómetro: <b>${nf(c.horasReg, 1)} h</b>.` : ''}</div></div>`}
       <div class="card row" style="gap:10px"><b class="small">Días con falla del equipo o en taller:</b><select id="hDf" style="width:auto"><option value="0" ${!a.descuenta_fallas ? 'selected' : ''}>Se cobra igual el mínimo (${esHora ? nf(c.base) + ' h' : '30 días'})</option><option value="1" ${a.descuenta_fallas ? 'selected' : ''}>Se descuentan proporcional</option></select>
@@ -599,8 +605,8 @@ function vArriendo(id) {
       <div class="card"><h2>${esHora ? 'Registrar horómetro' : 'Registrar reporte diario'}</h2>
       <div class="f"><div><label>Fecha</label><input type="date" id="hF" value="${todayISO()}"></div>
       <div><label>N° report</label><input id="hR" value="${last && /^\d+$/.test(last.n_report || '') ? (+last.n_report + 1) : ''}"></div>
-      <div><label>Horómetro inicial${esHora ? '' : ' (opcional)'}</label><input id="hI" inputmode="decimal" value="${lastH ? lastH.h_fin : ''}"></div>
-      <div><label>Horómetro final${esHora ? '' : ' (opcional)'}</label><input id="hX" inputmode="decimal"></div>
+      <div class="hcolin"><label>Horómetro inicial${esHora ? '' : ' (opcional)'}</label><input id="hI" inputmode="decimal" value="${lastH ? lastH.h_fin : ''}"></div>
+      <div class="hcolin"><label>Horómetro final${esHora ? '' : ' (opcional)'}</label><input id="hX" inputmode="decimal"></div>
       <div><label>Estado del día</label><select id="hE">${estadoOpts('operativo')}</select></div>
       <div><label>Observación</label><input id="hO" placeholder="Ej. 5 h pendientes, lluvia, cambio de aceite…"></div></div>
       <div class="small muted" style="margin-top:6px">Escriba el horómetro inicial y final <b>tal como viene en el report</b>, aunque el inicial no calce con el final del día anterior: la app marca el salto, pero guarda lo que le enviaron. Si no trabajó, ponga el mismo valor en inicial y final y elija el estado del día.${esHora ? '' : ' Equipos sin horómetro (como el martillo): deje los horómetros vacíos.'}</div>
@@ -608,6 +614,7 @@ function vArriendo(id) {
       <div class="card tw"><table><thead><tr><th>Fecha</th><th>N° report</th><th class="n">Inicial</th><th class="n">Final</th><th class="n">Horas</th><th class="n">Acum.</th><th>Estado</th><th>Observación</th><th></th></tr></thead><tbody>${filasHoro(a, c)}</tbody></table></div>`;
     const chk = () => { const i = num(val('hI')), x = num(val('hX')); $('hMsg').textContent = i != null && x != null ? (x < i ? '⚠ El final es menor que el inicial.' : `${nf(x - i, 1)} h${lastH && i !== +lastH.h_fin ? ` · ⚠ salto de ${nf(i - lastH.h_fin, 1)} h respecto del último final (${nf(lastH.h_fin, 1)}): se guarda igual` : ''}`) : (lastH && i != null && i !== +lastH.h_fin ? `⚠ El inicial no calza con el último final (${nf(lastH.h_fin, 1)}). Se guardará tal cual.` : ''); };
     $('hI').oninput = chk; $('hX').oninput = chk;
+    if ($('hTog')) $('hTog').onclick = e => { e.preventDefault(); const oculto = T.classList.toggle('nohoro'); try { localStorage.setItem('horo_' + a.id, oculto ? '0' : '1'); } catch (er) {} $('hTog').textContent = oculto ? 'Mostrar horómetro' : 'Este equipo no usa horómetro: ocultarlo'; };
     if ($('hCnt')) $('hCnt').onchange = () => { if (!D.hasConteo) return alert('Para usar esta opción ejecute primero sql/05_conteo_dias.sql en Supabase.'); guardar(() => upd('arriendos', a.id, {conteo_dias: val('hCnt')}), 'Conteo de días actualizado'); };
     $('hExp').onclick = () => exportHoro(a, c);
     $('hDf').onchange = () => { if (!D.hasFallas) return alert('Para usar esta opción ejecute primero sql/07_estado_dia.sql en Supabase.'); guardar(() => upd('arriendos', a.id, {descuenta_fallas: val('hDf') === '1'}), 'Criterio actualizado'); };
@@ -828,12 +835,15 @@ function formTerminar(a) {
   };
 }
 
+let EDP_MIN = null;
 function formEdp(a, e, final) {
   const c = calc(a), nuevo = !e;
   if (nuevo) {
     const last = c.edps[c.edps.length - 1];
     const desde = last && last.hasta ? addDays(last.hasta, 1) : a.fecha_inicio;
-    const cant = a.modalidad === 'global' ? 1 : final ? Math.max(0, Math.round(c.pend * 10) / 10) : (c.pend >= c.base ? c.base : Math.max(0, Math.round(c.pend * 10) / 10));
+    const real = Math.max(0, Math.round(c.pend * 10) / 10);
+    const cant = a.modalidad === 'global' ? 1 : final ? Math.max(real, c.base) : (c.pend >= c.base ? c.base : real);
+    if (final && a.modalidad !== 'global' && real < c.base) EDP_MIN = {real, base: c.base}; else EDP_MIN = null;
     const per = c.pers.filter(p => p.estado === 'con_oc').pop() || c.pers[c.pers.length - 1];
     e = {n: (last ? last.n : 0) + 1, desde, hasta: final ? a.fecha_fin : todayISO(), cantidad: cant, tarifa: a.tarifa, monto_mov: c.movCobrada ? 0 : (+a.movilizacion || 0),
       monto_desmov: final && !c.desmovCobrada ? (+a.desmovilizacion || 0) : 0, monto_otros: 0, estado: 'borrador', oc: per ? per.oc : '', periodo_id: per ? per.id : null,
@@ -844,7 +854,7 @@ function formEdp(a, e, final) {
       <div><label>N° EDP</label><input id="eN" inputmode="numeric" value="${e.n}"></div>
       <div><label>Desde</label><input type="date" id="eD" value="${e.desde || ''}"></div>
       <div><label>Hasta (corte)</label><input type="date" id="eH" value="${e.hasta || ''}"></div>
-      <div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="eC" inputmode="decimal" value="${e.cantidad ?? ''}"></div>
+      <div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="eC" inputmode="decimal" value="${e.cantidad ?? ''}">${nuevo && final && EDP_MIN ? `<div class="small" style="color:#9a5b00;margin-top:4px">Uso real: <b>${verU(a, EDP_MIN.real, 1)} ${uVer(a)}</b>, pero se cobra el <b>mínimo de ${verU(a, EDP_MIN.base)} ${uVer(a)}</b> de la cotización. <a href="#" id="eReal">Cobrar solo lo real</a> · <a href="#" id="eMin">Cobrar el mínimo</a></div>` : ''}</div>
       <div><label>Tarifa</label><input id="eT" inputmode="numeric" value="${e.tarifa ?? ''}"></div>
       <div><label>Movilización $</label><input id="eMv" inputmode="numeric" value="${e.monto_mov ?? 0}"></div>
       <div><label>Desmovilización $</label><input id="eDm" inputmode="numeric" value="${e.monto_desmov ?? 0}"></div>
@@ -870,6 +880,8 @@ function formEdp(a, e, final) {
   if ($('eHn')) $('eHn').oninput = () => { if (val('eHn')) { $('eHs').value = 'recibida'; if (!val('eHf')) $('eHf').value = todayISO(); } };
   $('eF').onchange = () => { if (val('eF') && val('eE') === 'borrador') $('eE').value = 'enviado'; };
   $('eCan').onclick = () => { closeModal(); go(); };
+  if ($('eReal')) $('eReal').onclick = ev => { ev.preventDefault(); $('eC').value = EDP_MIN.real; $('eC').dispatchEvent(new Event('input')); };
+  if ($('eMin')) $('eMin').onclick = ev => { ev.preventDefault(); $('eC').value = EDP_MIN.base; $('eC').dispatchEvent(new Event('input')); };
   if (!nuevo) $('eDel').onclick = () => { if (confirm('¿Eliminar este EDP?')) guardar(() => del('edps', e.id), 'EDP eliminado'); };
   $('eOk').onclick = () => {
     const o = {arriendo_id: a.id, periodo_id: e.periodo_id || null, n: num(val('eN')), desde: val('eD') || null, hasta: val('eH') || null, cantidad: num(val('eC')), tarifa: num(val('eT')),
@@ -1139,6 +1151,7 @@ function vCot(id) {
     <div class="row small" style="margin-top:8px"><label class="row" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cIva" style="width:auto" ${c.mostrar_iva ? 'checked' : ''}> Mostrar IVA y total con IVA en la oferta del cliente</label></div>
   </div>
 
+  <div id="ccBox">${compartidosHTML(c)}</div>
   <div class="card"><h2>Bajo la tabla</h2>
     <label>Notas (salen debajo de la oferta)</label><textarea id="tNo" style="min-height:70px">${esc(c.nota || '')}</textarea>
     <div class="row" style="margin-top:8px"><label class="row" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cFir" style="width:auto" ${c.con_firma !== false ? 'checked' : ''}> Incluir mi firma, nombre y cargo</label></div>
@@ -1151,7 +1164,7 @@ function vCot(id) {
     ${c.arriendo_id ? `<a class="btn sm" href="#a-${c.arriendo_id}" style="text-decoration:none">🚜 Ver arriendo</a><button class="sm" id="cExt">➕ Crear extensión</button>` : `<button class="sm" id="cArr">✅ Adjudicada: pasar a arriendo o prórroga</button>`}
     <button class="sm" id="cDoc2">📄 Oferta para el cliente</button><button class="sm" id="cFull2">📑 Oferta completa (PDF / Word)</button><button class="pri sm" id="cSave2">💾 Guardar</button>
   </div>`;
-  renderItems();
+  renderItems(); bindCompartidos();
   const bind = (id, k, f) => { $(id).oninput = $(id).onchange = () => { c[k] = f ? f($(id).value) : $(id).value; }; };
   bind('cN', 'numero', v => num(v)); bind('cR', 'rev', v => num(v) || 0); bind('cF', 'fecha'); bind('cE', 'estado'); $('cE').addEventListener('change', () => { if (c.estado !== 'perdida' || /Perdida:/i.test(c.notas || '')) return; const m = prompt('¿Por qué se perdió? (precio, plazo, otro proveedor, se canceló…)\nQueda en las notas internas y sirve para que la app aprenda qué precios funcionan.'); if (m) { c.notas = ((c.notas || '') + (c.notas ? ' · ' : '') + 'Perdida: ' + m.trim()).trim(); $('tIn').value = c.notas; } }); bind('cRef', 'referencia'); bind('tNo', 'nota'); bind('tIn', 'notas'); bind('cFa', 'faena'); bind('cCo', 'atencion'); bind('cCc', 'atencion_cargo');
   $('cV').oninput = () => { const v = num($('cV').value); c.validez_dias = v; if (v && /Validez de la oferta: \d+ días/.test(c.nota || '')) { c.nota = c.nota.replace(/Validez de la oferta: \d+ días/, `Validez de la oferta: ${v} días`); $('tNo').value = c.nota; } };
@@ -1183,6 +1196,7 @@ function catIndex() {
 }
 function renderItems() {
   const c = COT, tb = document.querySelector('#tIt tbody'); if (!tb) return;
+  if (c.compartidos && (c.compartidos.rows || []).length || c.items.some(i => i.cc_share)) aplicarCompartidos(c);
   const CI = catIndex();
   if (!document.getElementById('catList')) { const dl = document.createElement('datalist'); dl.id = 'catList'; document.body.appendChild(dl); }
   document.getElementById('catList').innerHTML = [...CI.values()].map(x => `<option value="${esc(x.nombre)}">${x.costo ? clp(x.costo) + ' / ' + esc(x.unidad) : 'sin costo'} · ${x.fuente}</option>`).join('');
@@ -1342,15 +1356,19 @@ function bindPrecioUnico() {
       const pp = D.parametros.find(x => x.clave === 'meta_ganancia_hora'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); else D.parametros.push({clave: 'meta_ganancia_hora', valor: v}); D.P.meta_ganancia_hora = v; updTot(); } catch (e) { alert(e.message); } };
 }
 async function saveCot(silent) {
+  if (COT && (COT.compartidos || COT.items.some(i => i.cc_share))) aplicarCompartidos(COT);
   const c = COT;
   if (!c.numero) { alert('Falta el N° de cotización.'); return false; }
   if (D.cotizaciones.some(x => x.id !== c.id && x.numero === c.numero && x.rev === c.rev)) { alert(`Ya existe la cotización ${c.numero} rev_${c.rev}.`); return false; }
-  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', ...(D.hasDoc ? ['faena'] : [])]
+  const o = {}; ['numero', 'rev', 'fecha', 'mandante_id', 'cliente', 'referencia', 'nota', 'validez_dias', 'items', 'gg', 'utilidad', 'mostrar_iva', 'con_firma', 'estado', 'notas', 'atencion', 'atencion_cargo', ...(D.hasDoc ? ['faena'] : []), ...(D.hasCC ? ['compartidos'] : [])]
     .forEach(k => { o[k] = c[k] === '' ? null : c[k]; });
   o.actualizado = new Date().toISOString();
   if (o.estado === 'enviada' && !c.fecha_envio) o.fecha_envio = todayISO();
   if (o.estado === 'adjudicada' && D.cotizaciones.some(x => 'fecha_adjudicacion' in x) && !c.fecha_adjudicacion) o.fecha_adjudicacion = todayISO();
-  try { const r = await upd('cotizaciones', c.id, o); syncLic(r); const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; const rv = c._revisado; COT = JSON.parse(JSON.stringify(r)); COT._revisado = rv; if (!silent) toast('Cotización guardada'); return true; }
+  try { const r = await upd('cotizaciones', c.id, o); syncLic(r);
+    if (['enviada', 'adjudicada'].includes(o.estado)) for (const x of D.cotizaciones.filter(x => x.numero === c.numero && x.id !== c.id && x.rev < (c.rev || 0) && x.estado === 'enviada')) {
+      const rx = await upd('cotizaciones', x.id, {estado: 'anulada', notas: ((x.notas || '') + (x.notas ? ' · ' : '') + `Reemplazada por rev_${c.rev} (${fd(todayISO())})`).trim()}); const ix = D.cotizaciones.findIndex(y => y.id === x.id); if (ix >= 0) D.cotizaciones[ix] = rx || {...x, estado: 'anulada'};
+      toast(`rev_${x.rev} quedó como Anulada (reemplazada por rev_${c.rev})`); } const i = D.cotizaciones.findIndex(x => x.id === c.id); D.cotizaciones[i] = r; const rv = c._revisado; COT = JSON.parse(JSON.stringify(r)); COT._revisado = rv; if (!silent) toast('Cotización guardada'); return true; }
   catch (e) { if (e.message === 'SESSION') { showLogin('Su sesión expiró.'); return false; } alert(e.message); return false; }
 }
 function copiaCot(numero, rev) {
@@ -1392,6 +1410,8 @@ function formAPU(i) {
     $('apR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo unitario</div><div class="v">${clp(cu)}</div></div>
       <div class="kpi g"><div class="l">Precio sugerido / ${esc(it.unidad || 'u')}</div><div class="v">${clp(sug)}</div></div><div class="kpi"><div class="l">Precio actual</div><div class="v">${it.precio ? clp(it.precio) : '—'}</div></div></div>
       ${it.precio && cu ? `<div class="small muted" style="margin-top:6px">Con el precio actual la utilidad sería ${clp((it.precio - cu) * cant)} (${nf((1 - cu / it.precio) * 100)}% sobre el precio).</div>` : ''}`;
+    const nOpL = rows.filter(r => /operador|conductor/i.test(r.c || '')).length;
+    if (nOpL > 1) $('apR').insertAdjacentHTML('afterbegin', `<div class="msg err small" style="margin:0 0 8px">⚠ Hay <b>${nOpL} líneas de operador</b>. Si el asistente ya agregó el operador (con 1 o 2 en rotación), la línea extra lo está <b>contando dos veces</b>: bórrela con la ✕, salvo que sea otro trabajador.</div>`);
   };
   $('apGG').oninput = $('apUT').oninput = calc;
   $('apT').onchange = () => { const t = byId('equipo_tipos', $('apT').value); $('apT').value = ''; if (!t) return;
@@ -1399,7 +1419,7 @@ function formAPU(i) {
     rows.push({c: 'Equipo ' + t.nombre, u: t.unidad, q: t.unidad === 'hm' ? (hrs || cant) : t.unidad === 'mes' ? Math.max(1, Math.round((hrs || 180) / P('horas_mes', 180) * 10) / 10) : cant, p}); draw(); };
   $('apO').onchange = () => { const o = byId('personal', $('apO').value); $('apO').value = ''; if (!o) return; rows.push({c: o.cargo, u: 'HH', q: hrs || P('horas_mes', 180), p: Math.round(+o.valor_hh || 0)}); draw(); };
   const dias = () => hrs ? Math.round(hrs / 8) : cant;
-  $('apAl').onclick = () => { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: dias(), p: P('almuerzo', 12000) + P('colacion', 5000)}); draw(); };
+  $('apAl').onclick = () => { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: dias(), p: P('alimentacion', P('almuerzo', 12000) + P('colacion', 5000))}); draw(); };
   $('apAj').onclick = () => { rows.push({c: 'Alojamiento', u: 'pers-día', q: dias(), p: P('alojamiento', 10000)}); draw(); };
   $('apDi').onclick = () => { rows.push({c: 'Petróleo diésel', u: 'litro', q: 0, p: P('diesel', 1500)}); draw(); toast('Escriba los litros: consumo l/h × horas'); };
   $('apLi').onclick = () => { rows.push({c: '', u: 'gl', q: 1, p: null}); draw(); };
@@ -1441,7 +1461,9 @@ function asistenteEquipo() {
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
     <div><label>Horas por día (6 = 180 h ÷ 30 días)</label><input id="wHd" inputmode="decimal" value="${nf(P('horas_dia', P('horas_mes', 180) / 30))}"></div>
     <div><label>Operador</label><select id="wO"><option value="">Sin operador</option>${ops.map(p => `<option value="${p.id}">${esc(p.cargo)} · ${clp(p.valor_hh)}/HH</option>`).join('')}</select></div>
-    <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option><option value="libre">Continuo · horario libre (1 operador)</option><option value="8x6">8x6 continuo (2 operadores en rotación, horas repartidas)</option></select></div>
+    <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option><option value="4x4">4x4</option><option value="10x10">10x10</option><option value="8x6">8x6</option><option value="libre">Continuo · horario libre (1 operador)</option></select></div>
+    <div><label>Operadores por equipo</label><select id="wNo"><option value="1">1 operador</option><option value="2">2 operadores (en rotación)</option></select></div>
+    <div><label>Pago de los operadores</label><select id="wPg"><option value="mes">Mes completo cada uno</option><option value="horas">Horas repartidas entre ellos</option></select></div>
     <div><label>Días en faena</label><input id="wD" inputmode="numeric"></div>
     <div><label>Alimentación y alojamiento</label><select id="wAl"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
     <div><label>Combustible</label><select id="wCo"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
@@ -1451,7 +1473,7 @@ function asistenteEquipo() {
     <div><label>Precio a cobrar ($ / unidad · vacío = sugerido)</label><input id="wP" inputmode="numeric" placeholder="sugerido"></div>
   </div>
   <div id="wRef" style="margin-top:8px"></div>
-  <div id="wConv" class="small muted" style="margin-top:6px"></div>
+  <div id="wOpInfo" class="small" style="margin:6px 0;color:#1f4e79"></div><div id="wConv" class="small muted" style="margin-top:6px"></div>
   <div style="margin-top:10px"><label>Descripción del ítem</label><input id="wDe"></div>
   <div id="wR" style="margin-top:10px"></div>
   <div class="mf"><button id="wCan">Cancelar</button><button class="pri" id="wOk">Agregar a la cotización</button></div>`);
@@ -1466,10 +1488,10 @@ function asistenteEquipo() {
     $('wConv').innerHTML = (enUF ? `Costo del equipo: ${nf(tar, 2)} UF × ${clp(ufv)} (valor UF) = <b>${clp(tar$)} / ${esc(u)}</b> neto. El IVA del proveedor no es costo (se recupera como crédito fiscal).` : $('wConv').innerHTML);
     if (T) rows.push({c: (sub ? `Arriendo ${T.nombre} a ${val('wProv') || 'proveedor'}` : 'Equipo ' + T.nombre) + (enUF ? ` (${nf(tar, 2)} UF)` : ''), u, q: q * n, p: tar$});
     // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
-    const rot = !['5x2', 'libre', '8x6'].includes(val('wTu')) && (u === 'mes' || hrs >= P('horas_mes', 180)) ? 2 : 1;
-    if (o && val('wTu') === '8x6') rows.push({c: o.cargo + ' (turno 8x6: 2 operadores en rotación, horas repartidas entre ambos)', u: 'HH', q: hrs * n, p: Math.round(+o.valor_hh || 0)});
-    else if (o) rows.push({c: o.cargo + (rot === 2 ? ` × 2 (turno ${val('wTu')}, 2 operadores en rotación, mes completo c/u)` : ''), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
-    if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('almuerzo', 12000) + P('colacion', 5000)}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
+    const nOp = +val('wNo') || 1, pagoMes = val('wPg') === 'mes', rot = nOp === 2 && pagoMes ? 2 : 1;
+    if (o) rows.push({c: o.cargo + (nOp === 2 ? (pagoMes ? ` × 2 (turno ${val('wTu')}: 2 operadores en rotación, cada uno con su mes completo)` : ` (turno ${val('wTu')}: 2 operadores en rotación, horas repartidas entre ambos)`) : ` (turno ${val('wTu')}: 1 operador)`), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
+    $('wOpInfo').innerHTML = o ? `👷 <b>${nOp * n} operador(es) en total</b> (${nOp} por equipo × ${n} equipo(s)). ${nOp === 2 ? `En faena hay 1 operador por equipo a la vez, así que la alimentación y el alojamiento se calculan para ${n} persona(s) por día. ` : ''}No agregue otro operador en el 🧮: ya está incluido aquí.` : '';
+    if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('alimentacion', P('almuerzo', 12000) + P('colacion', 5000))}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
     const rc = (num(val('wRc')) || 0) / 100;
     const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, sugerido = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
@@ -1490,7 +1512,7 @@ function asistenteEquipo() {
         if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
         if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
     }
-    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null}};
+    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), operadores: +val('wNo') || 1, dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null}};
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>`;
@@ -1521,7 +1543,14 @@ function asistenteEquipo() {
     unidad(); $('wD').placeholder = diasDef(); calc(); };
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
   ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
-  $('wU').onchange = () => { unidad(); $('wD').placeholder = diasDef(); calc(); };
+  $('wU').onchange = () => { unidad(); $('wD').placeholder = diasDef(); opDef(); calc(); };
+  let opManual = false;
+  const opDef = () => { if (opManual) return; const tu = val('wTu'), rotativo = !['5x2', 'libre'].includes(tu), q = num(val('wQ')) || 0, u = val('wU');
+    const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6), mesOmas = u === 'mes' || hrs >= P('horas_mes', 180) || (num(val('wD')) || diasDef()) >= 30;
+    $('wNo').value = rotativo ? '2' : '1'; $('wPg').value = rotativo && mesOmas && tu !== '8x6' ? 'mes' : 'horas'; $('wPg').disabled = !rotativo; };
+  $('wTu').addEventListener('change', () => { opManual = false; opDef(); calc(); });
+  $('wNo').onchange = $('wPg').onchange = () => { opManual = true; $('wPg').disabled = val('wNo') === '1'; calc(); };
+  opDef();
   const fillPe = () => { const T = t(), pal = T ? normTxt(T.nombre).split(/\s+/).filter(w => w.length > 2 || /\d/.test(w)).slice(0, 2) : [];
     const L = (D.proveedor_equipos || []).slice().sort((a, b) => { const m = x => (T && (x.tipo_id === T.id || pal.every(w => normTxt(x.equipo).includes(w)))) ? 0 : 1; return m(a) - m(b) || (a.proveedor || '').localeCompare(b.proveedor || ''); });
     $('wPe').innerHTML = '<option value="">— Escribir a mano —</option>' + L.map(x => `<option value="${x.id}">${esc(x.proveedor)} · ${esc(x.equipo || '')} · ${x.costo_uf ? nf(x.costo_uf, 2) + ' UF' : clp(x.costo_clp)} / ${esc(x.unidad || 'hm')}</option>`).join(''); };
@@ -1533,7 +1562,7 @@ function asistenteEquipo() {
   $('wMon').onchange = () => { const uf = val('wMon') === 'UF'; $('wUfW').hidden = !uf; if (uf) { $('wTa').value = ''; $('wTa').placeholder = 'ej. 0,98'; } else { $('wConv').innerHTML = ''; } calc(); };
   $('wUfv').oninput = calc;
   $('wProv').oninput = calc;
-  $('wQ').oninput = () => { qTocada = true; desc(); $('wD').placeholder = diasDef(); calc(); };
+  $('wQ').oninput = () => { qTocada = true; desc(); $('wD').placeholder = diasDef(); opDef(); calc(); };
   $('wCan').onclick = closeModal;
   $('wOk').onclick = async () => {
     const T = t(); if (!T) return alert('Elija el tipo de equipo.');
@@ -1755,7 +1784,7 @@ function datosServicio(c) {
   const cam = (c.items || []).some(i => i.tipo === 'i' && (CAM.test(i.desc || '') || (i.apu || []).some(r => CAM.test(r.c || ''))));
   return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov};
 }
-const TURNOTXT = {libre: 'en jornada diurna con horario libre', '8x6': 'en turno de trabajo continuo en jornada diurna', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
+const TURNOTXT = {libre: 'en jornada diurna con horario libre', '8x6': 'en turno de trabajo continuo en jornada diurna', '4x4': 'en turno de trabajo continuo en jornada diurna 4x4', '10x10': 'en turno de trabajo continuo en jornada diurna 10x10', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
 /* valores que se actualizan solos dentro de los textos (span data-v) */
 function valoresDoc(c, S, minera) {
   const m = byId('mandantes', c.mandante_id) || {};
@@ -2011,6 +2040,54 @@ async function docxDesdeHTML(root) {
   };
   media.forEach(m => { files['word/' + m.name] = m.data; });
   return zipStore(files, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+}
+
+/* ---------- Costos compartidos: se reparten (prorratean) en el costo de los equipos ---------- */
+const CC_RAPIDOS = [['Supervisor', 'mes', 1, 'supervisor'], ['Prevencionista de riesgos', 'mes', 1, 'prevencion'], ['Vehículo de apoyo 4x4 · traslado de personal (propio)', 'día', 30, 'camioneta'], ['Vehículo de apoyo 4x4 · traslado de personal (arrendado)', 'mes', 1, 'cam_arr'], ['Combustible vehículo de apoyo', 'litro', 600, 'diesel'], ['Container / campamento', 'mes', 1, 'container'], ['Radio portátil / base', 'mes', 1, 'radio'], ['Internet satelital Starlink', 'mes', 1, 'starlink'], ['Oxígeno / equipo de emergencia altura', 'mes', 1, 'oxigeno'], ['Instalación de faena', 'gl', 1, 'faena'], ['Baño químico', 'mes', 1, 'bano'], ['Conductor vehículo de apoyo', 'mes', 1, 'chofer'], ['Exámenes ocupacionales / altura geográfica', 'persona', 1, 'examenes'], ['Pasajes y traslados de personal', 'viaje', 1, 'pasajes']];
+const hrsItem = it => { const q = +it.cantidad || 0, m = it.meta || {}; return it.unidad === 'hm' ? q : it.unidad === 'mes' ? q * P('horas_mes', 180) : it.unidad === 'día' ? q * (m.hd || P('horas_mes', 180) / 30) : q; };
+function aplicarCompartidos(c) {   // recalcula la parte de cada equipo y la deja en su costo (y en su 🧮)
+  const cc = c.compartidos || {rows: []}, rows = cc.rows || [], total = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0);
+  const items = (c.items || []).filter(i => i.tipo === 'i'), elegibles = items.filter(i => i.equipo_tipo_id && !/moviliz/i.test(i.desc || ''));
+  const dest = (elegibles.length ? elegibles : items.filter(i => !i.oculto && !/moviliz/i.test(i.desc || '')));
+  const peso = it => cc.modo === 'horas' ? hrsItem(it) : cc.modo === 'monto' ? (+it.precio || 0) * (+it.cantidad || 0) : 1;
+  const sumP = dest.reduce((s, it) => s + peso(it), 0) || 1;
+  items.forEach(it => {
+    const share = dest.includes(it) && total ? Math.round(total * peso(it) / sumP) : 0, cant = +it.cantidad || 0;
+    if (it.apu && it.apu.length) {
+      it.apu = it.apu.filter(r => !r.cc); if (share) it.apu.push({c: 'Costos compartidos (prorrateo: ' + rows.map(r => r.c).join(', ').slice(0, 80) + ')', u: 'gl', q: 1, p: share, cc: true});
+      const t = it.apu.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0); it.costo = cant ? Math.round(t / cant) : it.costo;
+    } else if (it.costo != null && it.costo !== '' || share) {
+      const base = (+it.costo || 0) - (cant ? (+it.cc_share || 0) / cant : 0); it.costo = Math.round(base + (cant ? share / cant : 0));
+    }
+    if (share) it.cc_share = share; else delete it.cc_share;
+  });
+  return {total, dest, sumP, peso};
+}
+function compartidosHTML(c) {
+  if (!verInternos) return '';
+  const cc = c.compartidos || {rows: [], modo: 'horas'}, R = aplicarCompartidos(c), rows = cc.rows || [];
+  if (!D.hasCC) return `<div class="card"><h2 style="margin:0 0 4px">🧩 Costos compartidos</h2><div class="msg err small">Para usar esta sección ejecute <b>sql/15_costos_compartidos.sql</b> en Supabase.</div></div>`;
+  return `<div class="card"><div class="row"><h2 style="margin:0">🧩 Costos compartidos</h2><span class="sp"></span><label class="row small" style="margin:0;gap:4px">Repartir <select id="ccMo" style="width:auto"><option value="horas" ${cc.modo !== 'iguales' && cc.modo !== 'monto' ? 'selected' : ''}>según horas de cada equipo</option><option value="iguales" ${cc.modo === 'iguales' ? 'selected' : ''}>en partes iguales</option><option value="monto" ${cc.modo === 'monto' ? 'selected' : ''}>según monto de cada ítem</option></select></label></div>
+    <div class="small muted" style="margin:4px 0 8px">Supervisor, prevencionista, vehículo de apoyo para el personal, radio, Starlink, oxígeno, container, instalación de faena… (el transporte de la maquinaria va en el ítem Movilización / desmovilización). <b>No salen como ítem en la oferta</b>: se reparten solos en el costo de los equipos y suben su precio sugerido. Agregue rápido:</div>
+    <div class="row" style="gap:5px;margin-bottom:8px">${CC_RAPIDOS.map((x, k) => `<button class="sm" data-ccq="${k}">＋ ${esc(x[0])}</button>`).join('')}<button class="sm" data-ccq="-1">＋ Otro</button><select id="ccPer" style="width:auto;font-size:12px;padding:3px 6px"><option value="">＋ Personal del catálogo…</option>${D.personal.map(p => `<option value="${p.id}">${esc(p.cargo)}${+p.valor_hh ? ' · ' + clp(p.valor_hh * P('horas_mes', 180)) + '/mes' : ''}</option>`).join('')}</select></div>
+    ${rows.length ? `<div class="tw"><table><thead><tr><th>Concepto</th><th style="width:90px">Unidad</th><th class="n" style="width:90px">Cantidad</th><th class="n" style="width:130px">Valor unitario $</th><th class="n" style="width:130px">Subtotal</th><th style="width:40px"></th></tr></thead><tbody>
+      ${rows.map((r, k) => `<tr><td><input data-cc="${k}" data-ck="c" value="${esc(r.c)}"></td><td><input data-cc="${k}" data-ck="u" value="${esc(r.u || '')}"></td><td class="n"><input data-cc="${k}" data-ck="q" inputmode="decimal" value="${r.q ?? ''}" style="text-align:right"></td><td class="n"><input data-cc="${k}" data-ck="p" inputmode="numeric" value="${r.p ?? ''}" style="text-align:right" placeholder="costo"></td><td class="n">${clp((+r.q || 0) * (+r.p || 0))}</td><td><button class="dan sm" data-ccx="${k}">✕</button></td></tr>`).join('')}
+      <tr><td colspan="4"><b>Total costos compartidos</b></td><td class="n"><b>${clp(R.total)}</b></td><td></td></tr></tbody></table></div>
+      <div class="small" style="margin-top:6px">Reparto: ${R.dest.map(it => `<b>${esc(it.item)}</b> ${clp(it.cc_share || 0)}${cc.modo === 'horas' ? ` (${nf(hrsItem(it))} h)` : ''}`).join(' · ') || '<span class="muted">no hay equipos donde repartir</span>'}. Se suma en el 🧮 de cada equipo como "Costos compartidos".</div>` : '<div class="small muted">Aún no hay costos compartidos.</div>'}
+  </div>`;
+}
+function bindCompartidos() {
+  if (!COT || !document.getElementById('ccBox')) return;
+  const CC = () => { COT.compartidos = COT.compartidos || {rows: [], modo: 'horas'}; COT.compartidos.rows = COT.compartidos.rows || []; return COT.compartidos; };
+  const redo = () => setTimeout(() => { if (!$('ccBox') || !COT) return; $('ccBox').innerHTML = compartidosHTML(COT); bindCompartidos(); renderItems(); }, 0);
+  document.querySelectorAll('[data-ccq]').forEach(b => b.onclick = () => { const k = +b.dataset.ccq, x = CC_RAPIDOS[k];
+    const prev = x ? {supervisor: P('sueldo_supervisor', 0), prevencion: P('sueldo_prevencionista', 0), camioneta: P('camioneta_dia', 60000), diesel: P('diesel', 1500)}[x[3]] || null : null;
+    CC().rows.push(x ? {c: x[0], u: x[1], q: x[2], p: prev} : {c: '', u: 'gl', q: 1, p: null}); redo(); });
+  if ($('ccPer')) $('ccPer').onchange = () => { const pe = byId('personal', $('ccPer').value); if (!pe) return;
+    CC().rows.push({c: pe.cargo, u: 'mes', q: 1, p: Math.round((+pe.valor_hh || 0) * P('horas_mes', 180)) || null}); redo(); };
+  document.querySelectorAll('[data-ccx]').forEach(b => b.onclick = () => { CC().rows.splice(+b.dataset.ccx, 1); redo(); });
+  document.querySelectorAll('[data-cc]').forEach(inp => inp.onchange = () => { const r = CC().rows[+inp.dataset.cc], k = inp.dataset.ck; if (!r) return; r[k] = ['q', 'p'].includes(k) ? num(inp.value) : inp.value; redo(); });
+  if ($('ccMo')) $('ccMo').onchange = () => { CC().modo = $('ccMo').value; redo(); };
 }
 
 /* ---------- Registro comercial (licitaciones y ofertas) e indicadores de gestión ---------- */
