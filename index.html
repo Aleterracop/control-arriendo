@@ -82,6 +82,8 @@
   tr[data-d]:hover td{background:var(--pale)}
   .modal{position:fixed;inset:0;background:rgba(12,28,52,.45);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;z-index:50;overflow-y:auto}
   .modal[hidden]{display:none}
+  body.concalc .modal{padding-bottom:220px}   /* que las últimas filas se puedan subir por encima de la calculadora */
+  .calc .chead{cursor:move;touch-action:none}
   .mbox{background:#fff;border-radius:12px;max-width:1150px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25);overflow:hidden}
   .mhead{display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border-bottom:4px solid var(--navy)}
   .mhead h3{margin:0;color:var(--navy);font-size:17px;flex:1}
@@ -627,7 +629,7 @@ function markSel() {
     el.classList.toggle('sel', !!it); el.classList.toggle('neg', !!it && it.sign < 0);
   });
   const tot = [...SEL.values()].reduce((s, x) => s + x.sign * x.v, 0);
-  $('calc').hidden = SEL.size === 0;
+  $('calc').hidden = SEL.size === 0; document.body.classList.toggle('concalc', SEL.size > 0);
   $('cCount').textContent = `${SEL.size} monto${SEL.size === 1 ? '' : 's'} marcado${SEL.size === 1 ? '' : 's'} · suma`;
   $('cTot').textContent = clp(tot);
   $('cList').hidden = !calcOpen; $('cToggle').textContent = calcOpen ? 'Ocultar' : 'Ver montos';
@@ -646,6 +648,14 @@ $('cList').addEventListener('click', e => {
   if (d1) SEL.delete(d1.dataset.cdel);
   markSel(); e.stopPropagation();
 });
+(() => {   // calculadora arrastrable desde su barra superior
+  const box = $('calc'); let st = null, movio = false;
+  const fija = (x, y) => { x = Math.max(4, Math.min(window.innerWidth - box.offsetWidth - 4, x)); y = Math.max(4, Math.min(window.innerHeight - 50, y)); Object.assign(box.style, {left: x + 'px', top: y + 'px', right: 'auto', bottom: 'auto'}); };
+  try { const p = JSON.parse(localStorage.getItem('calc_pos_panel') || 'null'); if (p && window.innerWidth > 700) setTimeout(() => fija(p.x, p.y), 0); } catch (e) {}
+  box.addEventListener('pointerdown', e => { if (!e.target.closest('.chead') || e.target.closest('button') || window.innerWidth <= 700) return; const r = box.getBoundingClientRect(); st = {dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY}; movio = false; });
+  window.addEventListener('pointermove', e => { if (!st) return; if (!movio && Math.abs(e.clientX - st.x0) + Math.abs(e.clientY - st.y0) < 5) return; movio = true; fija(e.clientX - st.dx, e.clientY - st.dy); });
+  window.addEventListener('pointerup', () => { if (st && movio) { try { localStorage.setItem('calc_pos_panel', JSON.stringify({x: parseFloat(box.style.left), y: parseFloat(box.style.top)})); } catch (e) {} } st = null; });
+})();
 document.addEventListener('click', e => {
   const a = e.target.closest ? e.target.closest('[data-k]') : null;
   if (a && !e.target.closest('#calc')) { e.preventDefault(); e.stopPropagation(); toggleAmt(a, e.shiftKey || e.altKey); return; }

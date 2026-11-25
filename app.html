@@ -123,6 +123,9 @@ tr.prueba td{background:repeating-linear-gradient(45deg,#f6f0ff,#f6f0ff 10px,#ef
 @media (max-width:700px){#calc{bottom:70px;right:8px;left:8px;max-width:none}}
 #calc.mini{left:auto;min-width:0;opacity:.9}
 @media print{#calc{display:none}}
+.mb.wide{max-width:1000px}
+@media (min-width:1100px){.mb.wide{max-width:min(1000px,calc(100vw - 400px));margin-right:350px}}   /* deja libre la derecha para la calculadora */
+#calc .ch{touch-action:none;user-select:none}
 @media print{header,nav,button,.noprint,#msg{display:none!important}main{padding:0;max-width:none}body{background:#fff}#ofBox{width:100%!important;padding:0!important}@page{size:A4;margin:14mm}}
 .gbars{display:flex;gap:10px;align-items:flex-end;height:170px;padding:4px 2px 0}.gb{flex:1;text-align:center;min-width:40px}.gbb{height:130px;display:flex;gap:3px;align-items:flex-end;justify-content:center}.gbb div{width:42%;border-radius:4px 4px 0 0;min-height:1px}
 .nohoro .hcolin{display:none}.nohoro table th:nth-child(n+3):nth-child(-n+6),.nohoro table td:nth-child(n+3):nth-child(-n+6){display:none}
@@ -462,7 +465,7 @@ function vArriendos() {
 }
 
 function opts(list, val, lab, ph) { return (ph != null ? `<option value="">${esc(ph)}</option>` : '') + list.map(x => `<option value="${x.id}" ${x.id === val ? 'selected' : ''}>${esc(lab(x))}</option>`).join(''); }
-function modal(html) { $('mbox').innerHTML = html; $('modal').hidden = false; }
+function modal(html) { $('mbox').classList.remove('wide'); $('mbox').innerHTML = html; $('modal').hidden = false; }
 function closeModal() { $('modal').hidden = true; $('mbox').innerHTML = ''; }
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 async function guardar(fn, okMsg) {
@@ -2205,11 +2208,11 @@ function vGestion() {
     <label class="row small" style="margin:0;gap:4px">Tipo <select id="gTi" style="width:auto"><option value="">Todo</option><option value="arr">Arriendo de maquinaria</option><option value="serv">Servicios y obras</option></select></label>
   </div></div>
   <div class="kpis">
-    <div class="kpi g"><div class="l">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="v">${clp(K.vendido)}</div><div class="small muted">${K.adj.length} adjudicación(es)${K.vendido !== K.vendBase ? ` · base ${clp(K.vendBase)} + prórrogas ${clp(K.vendido - K.vendBase)}` : ''}</div></div>
-    <div class="kpi"><div class="l">Ofertas enviadas · ${esc(perTxt)}</div><div class="v">${clp(K.sum(K.env, l => +l.monto_oferta))}</div><div class="small muted">${K.env.length} oferta(s)</div></div>
-    <div class="kpi"><div class="l">En espera de adjudicación (hoy)</div><div class="v">${clp(K.sum(K.espera, l => +l.monto_oferta))}</div><div class="small muted">${K.espera.length} oferta(s) enviada(s)${K.pausa.length ? ` · más ${K.pausa.length} en pausa (${clp(K.sum(K.pausa, l => +l.monto_oferta))})` : ''}</div></div>
-    <div class="kpi"><div class="l">Tasa de adjudicación · ${esc(perTxt)}</div><div class="v">${K.tasaN == null ? '—' : nf(K.tasaN * 100) + '%'}</div><div class="small muted">${K.ganadas.length} de ${K.resueltas.length} resueltas${K.tasaM != null ? ` · ${nf(K.tasaM * 100)}% del monto` : ''}</div></div>
-    <div class="kpi"><div class="l">En estudio / preparación</div><div class="v">${K.curso.length}</div><div class="small muted">procesos aún sin oferta enviada</div></div>
+    <div class="kpi g" data-gk="adj" style="cursor:pointer" title="Ver detalle"><div class="l">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="v">${clp(K.vendido)}</div><div class="small muted">${K.adj.length} adjudicación(es)${K.vendido !== K.vendBase ? ` · base ${clp(K.vendBase)} + prórrogas ${clp(K.vendido - K.vendBase)}` : ''}</div></div>
+    <div class="kpi" data-gk="env" style="cursor:pointer" title="Ver detalle"><div class="l">Ofertas enviadas · ${esc(perTxt)}</div><div class="v">${clp(K.sum(K.env, l => +l.monto_oferta))}</div><div class="small muted">${K.env.length} oferta(s)</div></div>
+    <div class="kpi" data-gk="esp" style="cursor:pointer" title="Ver detalle"><div class="l">En espera de adjudicación (hoy)</div><div class="v">${clp(K.sum(K.espera, l => +l.monto_oferta))}</div><div class="small muted">${K.espera.length} oferta(s) enviada(s)${K.pausa.length ? ` · más ${K.pausa.length} en pausa (${clp(K.sum(K.pausa, l => +l.monto_oferta))})` : ''}</div></div>
+    <div class="kpi" data-gk="tasa" style="cursor:pointer" title="Ver detalle"><div class="l">Tasa de adjudicación · ${esc(perTxt)}</div><div class="v">${K.tasaN == null ? '—' : nf(K.tasaN * 100) + '%'}</div><div class="small muted">${K.ganadas.length} de ${K.resueltas.length} resueltas${K.tasaM != null ? ` · ${nf(K.tasaM * 100)}% del monto` : ''}</div></div>
+    <div class="kpi" data-gk="cur" style="cursor:pointer" title="Ver detalle"><div class="l">En estudio / preparación</div><div class="v">${K.curso.length}</div><div class="small muted">procesos aún sin oferta enviada</div></div>
   </div>
   ${serie.length ? `<div class="card"><h3 style="margin:0 0 8px">Mes a mes: ofertas enviadas vs adjudicado</h3><div class="gbars">${serie.map(s => `<div class="gb"><div class="gbb"><div style="height:${Math.round(Math.sqrt(s.env / mx) * 100)}%;background:#9cc3ea" title="Enviado ${clp(s.env)}"></div><div style="height:${Math.round(Math.sqrt(s.adj / mx) * 100)}%;background:#1e8e3e" title="Adjudicado ${clp(s.adj)}"></div></div><div class="small">${MESES[+s.m.slice(5) - 1].slice(0, 3)}</div><div class="small" style="font-size:10.5px;color:#1e8e3e">${s.adj ? mm2(s.adj) : ''}</div><div class="small muted" style="font-size:10px">${s.env ? 'env. ' + mm2(s.env) : ''}</div></div>`).join('')}</div>
     <div class="small muted"><span style="display:inline-block;width:10px;height:10px;background:#9cc3ea"></span> Ofertas enviadas &nbsp; <span style="display:inline-block;width:10px;height:10px;background:#1e8e3e"></span> Adjudicado (con prórrogas)</div></div>` : ''}
@@ -2227,6 +2230,24 @@ function vGestion() {
   document.querySelectorAll('[data-gest]').forEach(b => b.onclick = () => { GF.est = b.dataset.gest; vGestion(); });
   document.querySelectorAll('[data-lic]').forEach(tr => tr.onclick = () => formLic(byId('licitaciones', tr.dataset.lic)));
   $('gNew').onclick = () => formLic(null);
+  document.querySelectorAll('[data-gk]').forEach(k => k.onclick = () => gDetalle(k.dataset.gk, K, perTxt));
+}
+function gDetalle(tipo, K, perTxt) {
+  const ofe = l => +l.monto_oferta || 0, adjM = l => montoAdj(l) || 0;
+  const S = {adj: {t: 'Vendido (adjudicado) · ' + perTxt, secs: [['Adjudicadas', K.adj]], cols: 'adj'},
+    env: {t: 'Ofertas enviadas · ' + perTxt, secs: [['Ofertas enviadas', K.env]], cols: 'env'},
+    esp: {t: 'En espera de adjudicación (hoy)', secs: [['Enviadas, esperando respuesta', K.espera], ['En pausa (no suman al total)', K.pausa]], cols: 'env'},
+    tasa: {t: 'Tasa de adjudicación · ' + perTxt, secs: [['Ganadas', K.ganadas], ['Perdidas / descartadas', K.resueltas.filter(l => l.estado !== 'adjudicada')]], cols: 'adj'},
+    cur: {t: 'En estudio / preparación', secs: [['Procesos sin oferta enviada', K.curso]], cols: 'env'}}[tipo];
+  const ord = a => a.slice().sort((x, y) => (y.fecha_adjudicacion || y.fecha_envio || y.fecha_inicio || '').localeCompare(x.fecha_adjudicacion || x.fecha_envio || x.fecha_inicio || ''));
+  const tabla = (tit, arr) => `<h4 style="margin:12px 0 6px">${esc(tit)} (${arr.length})</h4>${arr.length ? `<div class="tw"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio / proyecto</th><th>Estado</th><th>Envío</th><th>Adjudicación</th><th class="n">Oferta</th>${S.cols === 'adj' ? '<th class="n">Adjudicado</th>' : ''}</tr></thead><tbody>
+    ${ord(arr).map(l => `<tr data-glic="${l.id}" style="cursor:pointer"><td>${esc(l.codigo || '—')}</td><td>${esc(l.mandante || '')}</td><td>${esc((l.proyecto || '').slice(0, 60))}</td><td>${estLic(l.estado)}</td><td>${fd(l.fecha_envio)}</td><td>${fd(l.fecha_adjudicacion)}</td><td class="n">${ofe(l) ? clp(ofe(l)) : '—'}</td>${S.cols === 'adj' ? `<td class="n">${l.estado === 'adjudicada' ? clp(adjM(l)) : '—'}</td>` : ''}</tr>`).join('')}
+    <tr style="font-weight:700;background:#f1f5fb"><td colspan="6">Total</td><td class="n">${clp(K.sum(arr, ofe))}</td>${S.cols === 'adj' ? `<td class="n">${clp(K.sum(arr.filter(l => l.estado === 'adjudicada'), adjM))}</td>` : ''}</tr></tbody></table></div>` : '<div class="small muted">Sin registros.</div>'}`;
+  modal(`<div class="row"><h3 style="margin:0">${esc(S.t)}</h3><span class="sp"></span><button id="gdX">Cerrar</button></div>
+    <div class="small muted" style="margin-top:4px">Pinche los <b>montos</b> para sumarlos en la calculadora (Shift + clic resta). Pinche el código o el nombre para abrir la licitación.</div>
+    ${S.secs.map(([t, a]) => tabla(t, a)).join('')}`);
+  $('mbox').classList.add('wide'); $('gdX').onclick = () => { $('mbox').classList.remove('wide'); closeModal(); };
+  document.querySelectorAll('[data-glic]').forEach(tr => tr.onclick = () => { $('mbox').classList.remove('wide'); formLic(byId('licitaciones', tr.dataset.glic)); });
 }
 const mm2 = v => v >= 1e6 ? '$' + nf(v / 1e6, 1) + ' M' : clp(v);
 function formLic(l) {
@@ -2341,8 +2362,9 @@ document.addEventListener('click', e => {
   if (e.target.closest('#calc')) return;
   if (calcModo) { const inp = e.target.closest('#view input, #mbox input'); if (inp && inp.type !== 'checkbox' && inp.type !== 'file') { const i = inputInfo(inp); if (i) { e.preventDefault(); inp.blur(); addCalc(i, e.shiftKey ? '−' : null); return; } } }
   const el = e.target.closest(CSEL); if (!el || el.querySelector('input,button') || e.target.closest('a,button,input,select')) return;
-  const i = celInfo(el); if (!i) return;
-  addCalc(i, e.shiftKey ? '−' : null);
+  if (el.closest('[data-gk]')) return;   // KPI de Gestión: abre el detalle
+  const i = celInfo(el); if (!i) { if (el.matches('td.n')) e.stopPropagation(); return; }
+  e.stopPropagation(); addCalc(i, e.shiftKey ? '−' : null);   // pinchar un monto solo lo suma; no abre la fila
 }, true);
 document.addEventListener('focusin', e => { if (calcModo && e.target.closest('#view input, #mbox input') && !e.target.closest('#calc')) e.target.blur(); });
 function markCalc() {
@@ -2357,7 +2379,7 @@ function drawCalc() {
   if (!CALC.size && !calcModo && !calcOpen) { box.innerHTML = `<div class="ch" id="cTg" style="border-radius:13px">🧮 <b style="flex:1">Calculadora</b></div>`; $('cTg').onclick = () => { calcOpen = true; drawCalc(); }; return; }
   if (!CALC.size && !calcModo) calcOpen = calcOpen;
   const ops = ['+', '−', '×', '÷'];
-  box.innerHTML = `<div class="ch" id="cTg">🧮 <b style="flex:1">Calculadora${CALC.size ? ' · ' + CALC.size : ''}</b><span>${calcOpen ? '▾' : '▸'}</span></div>
+  box.innerHTML = `<div class="ch" id="cTg" title="Arrastre esta barra para mover la calculadora · clic para plegarla">🧮 <b style="flex:1">Calculadora${CALC.size ? ' · ' + CALC.size : ''}</b><span style="opacity:.7;font-size:11px">✥ mover</span><span>${calcOpen ? '▾' : '▸'}</span></div>
     ${calcOpen ? `<div class="cb">${CALC.size ? [...CALC.values()].map((x, k) => `<div class="ci"><b style="width:14px;color:var(--blue)">${k ? x.op : (x.op === '−' ? '−' : '')}</b><span title="${esc(x.lab)}">${esc(x.lab)}</span><b>${fmt(x.v)}</b><button class="dan" data-cx="${k}">✕</button></div>`).join('') : '<div class="small muted">Pinche montos o horas de la pantalla para operarlos.</div>'}</div>
     <div class="ct"><div class="row"><span class="muted" style="font-weight:400">Resultado</span><span class="sp"></span><span style="font-size:16px">${fmt(resCalc())}</span></div>
     <div class="row" style="gap:4px;margin-top:6px"><span class="small muted" style="font-weight:400">Próximo:</span>${ops.map(o => `<button data-op="${o}" class="${calcOp === o ? 'pri' : ''}" style="min-width:30px;font-size:14px">${o}</button>`).join('')}</div>
@@ -2376,6 +2398,16 @@ function drawCalc() {
   box.querySelectorAll('[data-cx]').forEach(b => b.onclick = () => { const k = [...CALC.keys()][+b.dataset.cx]; CALC.delete(k); drawCalc(); markCalc(); });
 }
 calcOpen = false;
+(() => {   // la calculadora se puede arrastrar desde su barra azul (y recuerda dónde quedó)
+  const box = $('calc'); let st = null, movio = false;
+  const fija = (x, y) => { const w = box.offsetWidth, h = box.offsetHeight; x = Math.max(4, Math.min(window.innerWidth - w - 4, x)); y = Math.max(4, Math.min(window.innerHeight - 40, y));
+    box.style.left = x + 'px'; box.style.top = y + 'px'; box.style.right = 'auto'; box.style.bottom = 'auto'; };
+  try { const p = JSON.parse(localStorage.getItem('calc_pos') || 'null'); if (p && window.innerWidth > 700) setTimeout(() => fija(p.x, p.y), 0); } catch (e) {}
+  box.addEventListener('pointerdown', e => { if (!e.target.closest('.ch') || window.innerWidth <= 700) return; const r = box.getBoundingClientRect(); st = {dx: e.clientX - r.left, dy: e.clientY - r.top, x0: e.clientX, y0: e.clientY}; movio = false; });
+  window.addEventListener('pointermove', e => { if (!st) return; if (!movio && Math.abs(e.clientX - st.x0) + Math.abs(e.clientY - st.y0) < 5) return; movio = true; fija(e.clientX - st.dx, e.clientY - st.dy); });
+  window.addEventListener('pointerup', () => { if (st && movio) { try { localStorage.setItem('calc_pos', JSON.stringify({x: parseFloat(box.style.left), y: parseFloat(box.style.top)})); } catch (e) {} } st = null; });
+  box.addEventListener('click', e => { if (movio && e.target.closest('.ch')) { e.stopPropagation(); e.preventDefault(); movio = false; } }, true);   // al soltar tras arrastrar no se pliega
+})();
 new MutationObserver(() => { clearTimeout(markCalc.t); markCalc.t = setTimeout(markCalc, 30); }).observe(document.body, {childList: true, subtree: true});
 
 /* ---------------- Inicio de sesión ---------------- */
