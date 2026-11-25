@@ -1377,14 +1377,19 @@ function gananciaHistorica() {   // promedio de (precio − costo) por unidad en
   const L = []; D.cotizaciones.filter(c => c.estado === 'adjudicada' && !esPruebaCot(c)).forEach(c => (c.items || []).forEach(it => { if (it.tipo === 'i' && it.equipo_tipo_id && +it.precio && it.costo != null && it.costo !== '' && it.unidad === 'hm') L.push(+it.precio - +it.costo); }));
   return L.length ? {v: L.reduce((a, b) => a + b, 0) / L.length, n: L.length} : null;
 }
+const grupoConOp = its => its.some(x => x.meta && x.meta.op != null ? x.meta.op : (/operador/i.test(x.desc || '') && !/sin operador/i.test(x.desc || '') || (x.apu || []).some(r => /operador|conductor/i.test(r.c || ''))));
+function metaGrupo(its) {   // meta de ganancia por hora: una con operador y otra sin operador (arriendo en seco); se lleva a la unidad del ítem
+  const op = grupoConOp(its), mh = op ? P('meta_ganancia_hora', 0) : P('meta_ganancia_sinop', 0), u = its[0].unidad, hd = (its[0].meta && +its[0].meta.hd) || P('horas_mes', 180) / 30;
+  return {op, mh, m: !mh ? 0 : u === 'día' ? mh * hd : u === 'mes' ? mh * P('horas_mes', 180) : mh};
+}
 function precioUnicoHTML(c) {
   PU_PEND = []; META_SUG = null;
-  const meta = P('meta_ganancia_hora', 0), gg = +(c.gg ?? 0), ut = +(c.utilidad ?? P('utilidad', 0.2));
+  const gg = +(c.gg ?? 0), ut = +(c.utilidad ?? P('utilidad', 0.2)); let hayOp = false, haySin = false;
   const html = gruposEquipos(c).map(ix => {
     const its = ix.map(i => c.items[i]), sub = its.some(x => x.proveedor);
     const T = byId('equipo_tipos', its[0].equipo_tipo_id) || {}, u = its[0].unidad, caro = its.reduce((a, b) => (+b.costo > +a.costo ? b : a));
-    const maxC = +caro.costo, sug = meta ? redUp(maxC + meta) : redUp(maxC * (1 + gg) * (1 + ut));
-    const conOp = its.some(x => x.meta && x.meta.op != null ? x.meta.op : (/operador/i.test(x.desc || '') || (x.apu || []).some(r => /operador|conductor/i.test(r.c || ''))));
+    const MG = metaGrupo(its), conOp = MG.op, meta = MG.m; if (conOp) hayOp = true; else haySin = true;
+    const maxC = +caro.costo, sug = conOp ? (meta ? redUp(maxC + meta) : redUp(maxC * (1 + gg) * (1 + ut))) : redUp(maxC + meta);   // sin operador: la tarifa máquina ya trae la ganancia del equipo
     const R = referenciasMercado(T, u, conOp, c.id), ult = R.adj[0], refs = [R.lista, ult && ult.precio].filter(Boolean);
     const mercado = refs.length ? refs.reduce((a, b) => a + b, 0) / refs.length : null;
     let reco = sug, nota = 'Sin precios de referencia (lista o adjudicados) para este equipo: se recomienda el mínimo.';
@@ -1394,7 +1399,7 @@ function precioUnicoHTML(c) {
     }
     const rango = `<div style="margin-top:4px">📊 <b>Rango:</b> mínimo ${clp(sug)}${ult ? ` · último adjudicado ${clp(ult.precio)} (${esc(ult.mand)}, ${fd(ult.fecha)})` : ''}${R.lista ? ` · lista ${conOp ? 'con operador' : 'sin operador'} ${clp(R.lista)}` : ''} → <b>recomendado ${clp(reco)}/${esc(u)}</b>. ${nota}${actualRef(its) > (R.lista || Infinity) * 1.05 ? ' <b style="color:var(--orange)">Su precio actual está sobre la lista: puede costar adjudicarse.</b>' : ''}</div>`;
     if (its.length < 2 && !sub && !mercado) return '';
-    if (!META_SUG && u === 'hm') { const H = gananciaHistorica();
+    if (!META_SUG && u === 'hm' && conOp) { const H = gananciaHistorica();
       META_SUG = mercado && mercado > maxC * 1.1 ? {v: Math.floor((mercado - maxC) / 500) * 500, why: `lo que deja el precio de mercado (≈ ${clp(mercado)}) en el equipo de mayor costo (${clp(maxC)})`}
         : H ? {v: Math.floor(H.v / 500) * 500, why: `el promedio ganado por hora en ${H.n} ítem(s) de cotizaciones adjudicadas`}
         : {v: Math.floor(maxC * 0.2 / 500) * 500, why: 'el 20% del costo del equipo de mayor costo (no hay precios de mercado para comparar)'}; }
@@ -1405,14 +1410,17 @@ function precioUnicoHTML(c) {
     const bajo = !modo && Math.min(...its.map(x => +x.precio || 0)) < sug;
     return `<div class="msg ${iguales && actual >= sug ? 'ok' : 'info'} small" style="margin:8px 0 0">${bajo ? `<div style="background:#fde0e0;color:#8f1d16;border-radius:8px;padding:6px 8px;margin-bottom:6px;font-size:13.5px">⛔ <b>Con los costos actuales, su precio de ${clp(Math.min(...its.map(x => +x.precio || 0)))} queda bajo el mínimo.</b> Para cumplir su meta debe cobrar al menos <b>${clp(sug)}</b>; lo recomendado es <b>${clp(reco)}</b>. Use los botones de abajo o elija "Precio: automático".</div>` : ''}
       🚜 <b>${esc(T.nombre || 'Equipo')}</b> (${its.map(x => esc(x.item)).join(', ')}): el costo más alto es ${clp(maxC)}/${esc(u)} en ${esc(caro.item)}${caro.proveedor ? ' (' + esc(caro.proveedor) + ')' : ''}.
-      <b>Precio único sugerido: ${clp(sug)}/${esc(u)}</b> ${meta ? `(para ganar al menos ${clp(meta)} por ${esc(u)} en cada equipo)` : `(${nf(ut * 100)}% de utilidad sobre el de mayor costo)`} → ${gan(sug)}.
+      <b>Precio único sugerido: ${clp(sug)}/${esc(u)}</b> ${meta ? `(para ganar al menos ${clp(meta)} por ${esc(u)} en cada equipo · meta ${conOp ? 'con' : 'sin'} operador)` : conOp ? `(${nf(ut * 100)}% de utilidad sobre el de mayor costo)` : '(arriendo sin operador: la tarifa máquina ya incluye la ganancia del equipo)'} → ${gan(sug)}.
       ${its.length > 1 && !iguales ? '<br><b style="color:var(--red)">⚠ Hoy tienen precios distintos: el cliente lo va a notar.</b>' : `<br>Precio actual ${clp(actual)} → ${gan(actual)}.`}
       ${iguales && actual >= sug ? ' <b style="color:var(--green)">✓ Su precio cubre la meta.</b>' : ''}${rango}
       <div class="row" style="gap:6px;margin-top:6px"><label class="row small" style="margin:0;gap:4px">Precio: <select data-pmodo="${ix.join(',')}" style="width:auto;padding:3px 6px"><option value="">manual (lo escribo yo)</option><option value="min" ${modo === 'min' ? 'selected' : ''}>automático = mínimo</option><option value="reco" ${modo === 'reco' ? 'selected' : ''}>automático = recomendado</option></select></label>${modo ? '<span class="small" style="color:var(--green)">🔄 Se ajusta solo cuando cambian los costos</span>' : ''}${modo ? '' : (actual !== sug || !iguales ? `<button class="sm" data-pu="${ix.join(',')}" data-pv="${sug}">Aplicar mínimo ${clp(sug)}</button>` : '') + (reco !== sug && (actual !== reco || !iguales) ? `<button class="sm pri" data-pu="${ix.join(',')}" data-pv="${reco}">Aplicar recomendado ${clp(reco)}</button>` : '')}</div></div>`;
   }).join('');
   if (!html) return '';
-  return `${html}<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por hora en cada equipo ($):</span><input id="metaG" inputmode="numeric" value="${meta || ''}" placeholder="vacío = usa la utilidad %" style="width:180px">
-    ${META_SUG ? `<span>💡 Meta sugerida: <b>${clp(META_SUG.v)}/h</b> <span class="muted">(${META_SUG.why})</span></span>${META_SUG.v !== meta ? `<button class="sm" id="metaUse" data-v="${META_SUG.v}">Usar ${clp(META_SUG.v)}</button>` : ''}` : ''}<span class="muted">Se guarda para las próximas cotizaciones.</span></div>`;
+  const mOp = P('meta_ganancia_hora', 0), mSin = P('meta_ganancia_sinop', 0);
+  return `${html}${hayOp ? `<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por hora <b>con operador</b> ($):</span><input id="metaG" inputmode="numeric" value="${mOp || ''}" placeholder="vacío = usa la utilidad %" style="width:160px">
+    ${META_SUG ? `<span>💡 Meta sugerida: <b>${clp(META_SUG.v)}/h</b> <span class="muted">(${META_SUG.why})</span></span>${META_SUG.v !== mOp ? `<button class="sm" id="metaUse" data-v="${META_SUG.v}">Usar ${clp(META_SUG.v)}</button>` : ''}` : ''}</div>` : ''}
+    ${haySin ? `<div class="row small" style="margin-top:6px;gap:6px"><span>Meta de ganancia por hora <b>sin operador</b> ($):</span><input id="metaS" inputmode="numeric" value="${mSin || ''}" placeholder="vacío = cobrar la tarifa máquina" style="width:160px"><span class="muted">Arriendo en seco: la tarifa máquina ya trae la ganancia del equipo; ponga aquí solo lo extra que quiera ganar.</span></div>` : ''}
+    <div class="small muted" style="margin-top:2px">Las metas se guardan para las próximas cotizaciones. En equipos por día se multiplican por las horas de la jornada.</div>`;
 }
 function bindPrecioUnico() {
   document.querySelectorAll('[data-gun]').forEach(sl => sl.onchange = () => { const it = COT.items[+sl.dataset.gun]; if (sl.value === '__arr') { it.propiedad = 'arriendo'; delete it.flota_id; } else { delete it.propiedad; if (sl.value) it.flota_id = sl.value; else delete it.flota_id; } updTot(); });
@@ -1421,6 +1429,9 @@ function bindPrecioUnico() {
   document.querySelectorAll('[data-pmodo]').forEach(sel => sel.onchange = () => { sel.dataset.pmodo.split(',').forEach(i => { if (sel.value) COT.items[+i].pauto = sel.value; else delete COT.items[+i].pauto; }); renderItems(); });
   document.querySelectorAll('[data-pu]').forEach(b => b.onclick = () => { const v = +b.dataset.pv; b.dataset.pu.split(',').forEach(i => { COT.items[+i].precio = v; }); renderItems(); toast(`Precio ${clp(v)} aplicado · recuerde Guardar`); });
   if ($('metaUse')) $('metaUse').onclick = () => { $('metaG').value = $('metaUse').dataset.v; $('metaG').onchange(); };
+  const ms = $('metaS'); if (ms) ms.onchange = async () => { const v = num(ms.value) || 0, now = new Date().toISOString();
+    try { await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([{clave: 'meta_ganancia_sinop', valor: v, descripcion: 'Meta de ganancia por hora en arriendos sin operador (sobre la tarifa máquina)', actualizado: now}])});
+      const pp = D.parametros.find(x => x.clave === 'meta_ganancia_sinop'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); else D.parametros.push({clave: 'meta_ganancia_sinop', valor: v}); D.P.meta_ganancia_sinop = v; updTot(); } catch (e) { alert(e.message); } };
   const m = $('metaG'); if (m) m.onchange = async () => { const v = num(m.value) || 0, now = new Date().toISOString();
     try { await api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([{clave: 'meta_ganancia_hora', valor: v, descripcion: 'Meta de ganancia por hora (o unidad) en cada equipo, para el precio único', actualizado: now}])});
       const pp = D.parametros.find(x => x.clave === 'meta_ganancia_hora'); if (pp) Object.assign(pp, {valor: v, actualizado: now}); else D.parametros.push({clave: 'meta_ganancia_hora', valor: v}); D.P.meta_ganancia_hora = v; updTot(); } catch (e) { alert(e.message); } };
@@ -1585,7 +1596,7 @@ function asistenteEquipo() {
         if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
         if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
     }
-    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), operadores: +val('wNo') || 1, dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null}};
+    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), operadores: +val('wNo') || 1, dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null, min_mes: num(val('wMin')) || null, plazo: num(val('wPl')) || null, plazo_u: val('wPlU')}};
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>
@@ -1859,34 +1870,36 @@ const fCorta = s => s ? s.slice(8, 10) + s.slice(5, 7) + s.slice(0, 4) : '';
 const capi = s => { s = String(s || '').trim(); return s ? s[0].toUpperCase() + s.slice(1) : ''; };
 const NUMTXT = ['', 'un', 'dos', 'tres', 'cuatro', 'cinco', 'seis', 'siete', 'ocho', 'nueve', 'diez'];
 function nombreEquipos(nombre, n) {   // "excavadora 320" → "una excavadora 320 o similar" / "dos excavadoras 320 o similar"
-  const w = String(nombre || 'equipo').toLowerCase().trim().split(/\s+/), fem = /a$/.test(w[0]);
-  if (n > 1) w[0] = /[aeiouáéíóú]$/.test(w[0]) ? w[0] + 's' : w[0] + 'es';
+  const w = String(nombre || 'equipo').toLowerCase().trim().replace(/\bcamion\b/g, 'camión').replace(/\bcamiones\b/g, 'camiones').split(/\s+/), fem = /a$/.test(w[0]);
+  if (n > 1) w[0] = w[0] === 'camión' ? 'camiones' : /[aeiouáéíóú]$/.test(w[0]) ? w[0] + 's' : w[0] + 'es';
   const cnt = n === 1 ? (fem ? 'una' : 'un') : (NUMTXT[n] || String(n));
   return `${cnt} ${w.join(' ')} o similar`;
 }
 /* Datos del servicio leídos desde los ítems (con lo que guardó el asistente, o deducidos del APU) */
 function datosServicio(c) {
   const its = (c.items || []).filter(i => i.tipo === 'i' && !i.oculto), eq = its.filter(i => !/moviliz|flete|traslado/i.test(i.desc || '') && (i.equipo_tipo_id || /arriendo|excavadora|bulldozer|cargador|retro|motoniveladora|rodillo|cami[oó]n/i.test(i.desc || '')));
-  const grupos = {}; let op = false, al = null, co = null, turno = null, dias = 0, horas = null, uDia = null;
+  const grupos = {}; let op = false, sinOp = false, al = null, co = null, turno = null, dias = 0, horas = null, uDia = null;
   eq.forEach(it => {
     const m = it.meta || {}, T = it.equipo_tipo_id ? byId('equipo_tipos', it.equipo_tipo_id) : null, apu = it.apu || [];
     const nEq = m.equipos || 1, nom = T ? T.nombre : (it.desc || 'equipo').replace(/^arriendo de\s*/i, '').replace(/\s+(o similar|con operador|por|con)\b.*$/i, '');
-    grupos[nom.toLowerCase()] = (grupos[nom.toLowerCase()] || {nombre: nom, n: 0}); grupos[nom.toLowerCase()].n += nEq;
+    const g = grupos[nom.toLowerCase()] = (grupos[nom.toLowerCase()] || {nombre: nom, n: 0, dias: 0, u: it.unidad, minMes: null, op: false}); g.n += nEq;
     const tieneOp = m.op ?? (/operador/i.test(it.desc || '') || apu.some(r => /operador|conductor/i.test(r.c || '')));
-    if (tieneOp) op = true;
+    if (tieneOp) { op = true; g.op = true; } else sinOp = true;
     const alI = m.al || (apu.some(r => /alimentaci|alojamiento/i.test(r.c || '')) ? 'terracop' : null); if (alI) al = al === 'terracop' ? al : alI;
     const coI = m.co || (apu.some(r => /di[eé]sel|petr[oó]leo|combustible/i.test(r.c || '')) ? 'terracop' : null); if (coI) co = co === 'terracop' ? co : coI;
     if (m.turno && !turno) turno = m.turno;
     let d = m.dias; if (!d) { const ra = apu.find(r => /alimentaci/i.test(r.c || '')); if (ra) d = Math.round((+ra.q || 0) / nEq); }
     if (!d) d = it.unidad === 'día' ? +it.cantidad / nEq : it.unidad === 'mes' ? +it.cantidad * 30 / nEq : it.unidad === 'hm' ? Math.ceil(+it.cantidad / nEq / (m.hd || P('horas_mes', 180) / 30)) : 0;
-    if (d > dias) dias = d;
+    if (d > dias) dias = d; if (d > g.dias) g.dias = Math.round(d); g.u = it.unidad;
+    g.minMes = m.min_mes || g.minMes || (it.unidad === 'hm' && m.horas_equipo && d > 31 ? Math.round(m.horas_equipo / Math.max(1, Math.round(d / (m.turno === '5x2' ? 22 : 30)))) : null);
     if (it.unidad === 'hm') { const h = m.horas_equipo || (+it.cantidad / nEq); horas = horas == null ? h : Math.min(horas, h); }
     if (it.unidad === 'día' || it.unidad === 'mes') uDia = it.unidad;
   });
   const mov = its.some(i => /moviliz/i.test(i.desc || '')) || (c.items || []).some(i => i.tipo === 'g' && /moviliz/i.test(i.desc || '') && its.some(x => String(x.item || '').startsWith(i.item + '.')));
   const lista = Object.values(grupos), CAM = /camioneta|veh[ií]culo|4x4/i;
   const cam = (c.items || []).some(i => i.tipo === 'i' && (CAM.test(i.desc || '') || (i.apu || []).some(r => CAM.test(r.c || ''))));
-  return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov};
+  const mixto = new Set(lista.map(g => g.dias + '|' + g.u)).size > 1, minMes = lista.length && lista.every(g => g.minMes && g.minMes === lista[0].minMes && g.u === lista[0].u) ? lista[0].minMes : null;
+  return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, opMix: op && sinOp, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov, mixto, minMes, uMin: lista.length ? lista[0].u : null};
 }
 const TURNOTXT = {libre: 'en jornada diurna con horario libre', '8x6': 'en turno de trabajo continuo en jornada diurna', '4x4': 'en turno de trabajo continuo en jornada diurna 4x4', '10x10': 'en turno de trabajo continuo en jornada diurna 10x10', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
 /* valores que se actualizan solos dentro de los textos (span data-v) */
@@ -1903,16 +1916,21 @@ const V = k => `<span data-v="${k}" contenteditable="false"></span>`;
 function textosBase(c, S, minera) {
   const eqTxt = S.lista.length === 1 ? nombreEquipos(S.lista[0].nombre, S.lista[0].n) : S.lista.map(g => nombreEquipos(g.nombre, g.n)).join(', ') || 'equipos';
   const turno = S.turno ? TURNOTXT[S.turno] : 'en jornada diurna', cont = S.turno && S.turno !== '5x2' ? ' continuos' : '';
-  const minimo = S.horas ? `, con un mínimo de ${V('horas')} horas máquina por equipo` : '';
-  const ops = S.op ? ' con operador' : '';
+  const minTxt = (u, mn) => !mn ? '' : u === 'hm' ? `, con un mínimo de ${nf(mn)} horas máquina mensuales` : u === 'día' ? `, con un mínimo de ${nf(mn)} días mensuales` : '';
+  const minimo = S.minMes ? minTxt(S.uMin, S.minMes) + ' por equipo' : S.horas ? `, con un mínimo de ${V('horas')} horas máquina por equipo` : '';
+  const ops = S.opMix ? '' : S.op ? ' con operador' : ' sin operador';
+  const eqPer = g => `${capi(nombreEquipos(g.nombre, g.n))}${S.opMix ? (g.op ? ' con operador' : ' sin operador') : ''}, por un periodo de ${nf(g.dias)} días${minTxt(g.u, g.minMes)}`;
   const T = {};
   T.carta = `<p>${c.atencion || minera ? `Señor(a):<br><b>${V('contacto')}</b>${c.atencion_cargo || minera ? '<br>' + V('cargo') : ''}<br>${V('cliente')}` : `Señores:<br><b>${V('cliente')}</b>`}<br><u>Presente</u></p>
 <p>De nuestra consideración:</p>
 <p>Adjuntamos a usted nuestra oferta económica correspondiente al “${V('ref')}”${c.faena ? ', a ejecutarse en ' + V('faena') : ''}, la cual considera los alcances que se describen a continuación.</p>
 <p>Sin otro particular, saluda atentamente a usted,</p>`;
   const al = [];
-  al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de ${eqTxt}${ops}, por un periodo de ${V('dias')} días${cont}, ${turno}${minimo}.`);
-  al.push(`Se consideran como parte de nuestra oferta los siguientes equipos:<ol>${S.lista.map(g => `<li>${capi(nombreEquipos(g.nombre, g.n))}.</li>`).join('') || '<li>…</li>'}</ol>`);
+  if (S.mixto) al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de los siguientes equipos${ops}, ${turno}:<ol>${S.lista.map(g => `<li>${eqPer(g)}.</li>`).join('')}</ol>`);
+  else {
+    al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de ${eqTxt}${ops}, por un periodo de ${V('dias')} días${cont}, ${turno}${minimo}.`);
+    al.push(`Se consideran como parte de nuestra oferta los siguientes equipos:<ol>${S.lista.map(g => `<li>${capi(nombreEquipos(g.nombre, g.n))}${S.opMix ? (g.op ? ' con operador' : ' sin operador') : ''}.</li>`).join('') || '<li>…</li>'}</ol>`);
+  }
   if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día (sin sistema supresor de incendio automático o semiautomático).</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
   al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
@@ -1925,21 +1943,29 @@ function textosBase(c, S, minera) {
   const ap = [];
   if (S.co === 'mandante') ap.push('Combustible y AdBlue para la operación diaria de los equipos, suministrado en el punto de trabajo.');
   if (S.op && S.al === 'mandante') ap.push('Alimentación y estadía en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación con el campamento será aportada por Terracop, previo a los cambios de turno.');
+  if (!S.op || S.opMix) {   // arriendo sin operador (en seco): responsabilidades del mandante
+    ap.push('Lugar de resguardo de los equipos objeto de la presente oferta, cuando no estén en operación.');
+    if (S.lista.some(g => !g.op && ['camion', 'aljibe', 'camioneta', 'grua'].includes(mqFam(g.nombre)))) ap.push('Los camiones se entregan con el estanque de combustible lleno y deberán ser devueltos en las mismas condiciones al término del servicio.');
+  }
+  if (!S.op || S.opMix) ap.push(S.opMix ? 'Operadores de los equipos arrendados sin operador, debidamente acreditados y autorizados por el mandante.' : 'Operadores de los equipos, debidamente acreditados y autorizados por el mandante.');
   if (!minera) ap.push('Acceso expedito y seguro de los equipos al lugar de trabajo.');
   const ex = [];
   if (ap.length) ex.push(`Se consideran los siguientes aportes del mandante:<ul>${ap.map(x => `<li>${x}</li>`).join('')}</ul>`);
   if (minera) {
-    ex.push('Se excluye del alcance de la oferta la incorporación de supervisor y prevencionista de riesgos, dado que se trata de un servicio de arriendo de maquinaria con operador, el cual será administrado operativamente en sitio por el mandante. De igual forma, se considera el apoyo del Departamento de Prevención de Riesgos de Terracop, que realizará asistencia en terreno con el objetivo de resguardar el sistema de gestión de seguridad de Terracop y el del mandante.');
+    ex.push(`Se excluye del alcance de la oferta la incorporación de supervisor y prevencionista de riesgos, dado que se trata de un servicio de arriendo de maquinaria ${S.op && !S.opMix ? 'con operador' : S.op ? 'con y sin operador' : 'sin operador'}, el cual será administrado operativamente en sitio por el mandante. De igual forma, se considera el apoyo del Departamento de Prevención de Riesgos de Terracop, que realizará asistencia en terreno con el objetivo de resguardar el sistema de gestión de seguridad de Terracop y el del mandante.`);
     ex.push('Se excluye de la presente oferta la instalación de sistema supresor de incendio automático o semiautomático.');
   }
+  if (!S.op || S.opMix) ex.push('Los daños a los equipos arrendados sin operador derivados de su operación, mal uso, accidentes o fallas operacionales serán de cargo del mandante, al igual que las multas o infracciones asociadas a su uso.');
   ex.push('Se excluye el suministro de instalación de faena para el presente servicio.');
   if (minera) ex.push('Dado que no se conoce el detalle de las actividades a ejecutar, y con la finalidad de no sobrestimar el costo del servicio, se considera que los elementos de desgaste serán aporte de Terracop a costo del mandante, y su cambio será realizado por el equipo de mantenimiento de Terracop en faena.');
   else ex.push('Se excluyen los trabajos adicionales no indicados en el presente alcance, los que podrán ser cotizados por separado.');
   T.exclusiones = `<p>Se consideran las siguientes exclusiones y aportes del mandante, no incluidos en la presente evaluación:</p><ol>${ex.map(x => `<li>${x}</li>`).join('')}</ol>`;
   T.oferta_intro = `<p>De acuerdo con el alcance antes señalado, se considera la siguiente oferta económica por arriendo de equipos${ops}:</p>`;
   const notas = [];
-  if (S.dias) notas.push(`La tarifa indicada considera un periodo de arriendo de ${V('dias')} días${cont}${S.horas ? ` con un mínimo de ${V('horas')} horas máquina por equipo` : ''}.`);
+  if (S.mixto) notas.push('La tarifa de cada equipo considera el periodo de arriendo y el mínimo mensual indicados en el alcance, cobrados mediante estado de pago mensual.');
+  else if (S.dias) notas.push(`La tarifa indicada considera un periodo de arriendo de ${V('dias')} días${cont}${S.minMes ? minTxt(S.uMin, S.minMes).replace(/^, /, ' ') + ' por equipo' : S.horas ? ` con un mínimo de ${V('horas')} horas máquina por equipo` : ''}.`);
   if (S.horas) notas.push('Las horas trabajadas sobre el mínimo se cobrarán a la misma tarifa unitaria.');
+  if (S.uDia === 'día' || S.lista.some(g => g.u === 'día')) notas.push('Los equipos cobrados por día se controlan mediante el report diario de jornada firmado por el mandante.');
   const notaCot = (c.nota || '').trim(); if (notaCot && !/^Los valores indicados son netos y no incluyen IVA\.\s*\nValidez de la oferta: \d+ días\.?$/.test(notaCot)) notaCot.split('\n').filter(Boolean).forEach(l => notas.push(esc(l)));
   T.notas = notas.length ? `<p><b>Nota:</b></p><ol>${notas.map(x => `<li>${x}</li>`).join('')}</ol>` : '<p></p>';
   const cg = [];
@@ -1977,7 +2003,7 @@ function chequeoEnvio(c, S, minera) {
     else if (+i.precio && +i.precio < +i.costo && !i.oculto) add('red', `<b>${esc(i.item)}</b>: el precio (${clp(i.precio)}) es <b>menor que el costo</b> (${clp(i.costo)}).`);
     if (i.costo_uf) add('info', `<b>${esc(i.item)}</b>: subarrendado a ${esc(i.proveedor || 'proveedor')} a ${nf(i.costo_uf, 2)} UF. Confirme el valor con el proveedor.`); });
   const porTipo = {}; vis.filter(i => i.equipo_tipo_id).forEach(i => { (porTipo[i.equipo_tipo_id + i.unidad] = porTipo[i.equipo_tipo_id + i.unidad] || new Set()).add(+i.precio); });
-  precioUnicoHTML(c); const bajos = []; gruposEquipos(c).forEach(ix => { const its = ix.map(i => c.items[i]), maxC = Math.max(...its.map(x => +x.costo)), meta = P('meta_ganancia_hora', 0), sug = meta ? redUp(maxC + meta) : redUp(maxC * (1 + +(c.gg ?? 0)) * (1 + +(c.utilidad ?? 0.2))); its.forEach(x => { if (+x.precio < sug) bajos.push(`${esc(x.item)} (${clp(x.precio)} < ${clp(sug)})`); }); });
+  precioUnicoHTML(c); const bajos = []; gruposEquipos(c).forEach(ix => { const its = ix.map(i => c.items[i]), maxC = Math.max(...its.map(x => +x.costo)), MG = metaGrupo(its), meta = MG.m, sug = MG.op ? (meta ? redUp(maxC + meta) : redUp(maxC * (1 + +(c.gg ?? 0)) * (1 + +(c.utilidad ?? 0.2)))) : redUp(maxC + meta); its.forEach(x => { if (+x.precio < sug) bajos.push(`${esc(x.item)} (${clp(x.precio)} < ${clp(sug)})`); }); });
   if (bajos.length) add('red', `Precio <b>bajo el mínimo</b> para su meta de ganancia: ${bajos.join(', ')}. Corríjalo en la cotización (recuadro 🚜).`);
   if (Object.values(porTipo).some(st => st.size > 1)) add('orange', 'Hay <b>equipos iguales con precios distintos</b>: el cliente lo va a notar.');
   if (S.op && !S.cam) add('orange', 'No hay <b>camioneta / vehículo</b> en los costos. Si la ponen ustedes, agréguela en el 🧮 de cada equipo (línea libre "Camioneta traslado operadores · día"). No sale como ítem en la oferta.');
