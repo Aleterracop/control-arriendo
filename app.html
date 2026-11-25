@@ -1943,7 +1943,7 @@ function textosBase(c, S, minera) {
   const ap = [];
   if (S.co === 'mandante') ap.push('Combustible y AdBlue para la operación diaria de los equipos, suministrado en el punto de trabajo.');
   if (S.op && S.al === 'mandante') ap.push('Alimentación y estadía en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación con el campamento será aportada por Terracop, previo a los cambios de turno.');
-  if (!S.op || S.opMix) {   // arriendo sin operador (en seco): responsabilidades del mandante
+  if ((!S.op || S.opMix) && !minera) {   // arriendo sin operador (en seco) a particulares: responsabilidades del mandante (no va en mineras grandes)
     ap.push('Lugar de resguardo de los equipos objeto de la presente oferta, cuando no estén en operación.');
     if (S.lista.some(g => !g.op && ['camion', 'aljibe', 'camioneta', 'grua'].includes(mqFam(g.nombre)))) ap.push('Los camiones se entregan con el estanque de combustible lleno y deberán ser devueltos en las mismas condiciones al término del servicio.');
   }
@@ -1955,7 +1955,7 @@ function textosBase(c, S, minera) {
     ex.push(`Se excluye del alcance de la oferta la incorporación de supervisor y prevencionista de riesgos, dado que se trata de un servicio de arriendo de maquinaria ${S.op && !S.opMix ? 'con operador' : S.op ? 'con y sin operador' : 'sin operador'}, el cual será administrado operativamente en sitio por el mandante. De igual forma, se considera el apoyo del Departamento de Prevención de Riesgos de Terracop, que realizará asistencia en terreno con el objetivo de resguardar el sistema de gestión de seguridad de Terracop y el del mandante.`);
     ex.push('Se excluye de la presente oferta la instalación de sistema supresor de incendio automático o semiautomático.');
   }
-  if (!S.op || S.opMix) ex.push('Los daños a los equipos arrendados sin operador derivados de su operación, mal uso, accidentes o fallas operacionales serán de cargo del mandante, al igual que las multas o infracciones asociadas a su uso.');
+  if ((!S.op || S.opMix) && !minera) ex.push('Los equipos arrendados sin operador cuentan con seguro. En caso de siniestro, el deducible de la póliza y los daños no cubiertos por el seguro derivados de su operación, mal uso o fallas operacionales serán de cargo del mandante, al igual que las multas o infracciones asociadas a su uso.');
   ex.push('Se excluye el suministro de instalación de faena para el presente servicio.');
   if (minera) ex.push('Dado que no se conoce el detalle de las actividades a ejecutar, y con la finalidad de no sobrestimar el costo del servicio, se considera que los elementos de desgaste serán aporte de Terracop a costo del mandante, y su cambio será realizado por el equipo de mantenimiento de Terracop en faena.');
   else ex.push('Se excluyen los trabajos adicionales no indicados en el presente alcance, los que podrán ser cotizados por separado.');
