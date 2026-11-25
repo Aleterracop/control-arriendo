@@ -174,6 +174,7 @@
   <div id="dash" hidden>
     <section class="kpis" id="kpis"></section>
     <section id="gestion" hidden></section>
+    <section id="ubic" hidden></section>
     <div class="hint noprint">Pinche cualquier indicador, barra, gráfico o fila para ver su detalle. Pinche un <b>monto</b> para marcarlo y sumarlo en la calculadora (con Shift + clic se marca restando).</div>
     <div class="grid3">
       <div class="card"><h2>Ventas por equipo y servicio</h2><div class="cap">Total vendido: enviado en EDP y por enviar ($ neto)</div><div id="chVentas"></div>
@@ -784,6 +785,108 @@ function renderGestion() {
     all: {t: 'Todas las licitaciones y ofertas', s: `${L.length} procesos del registro comercial, del más reciente al más antiguo`, r: L.slice()}};
   $('gPer').value = GPER; $('gPer').onchange = () => { GPER = $('gPer').value; renderGestion(); };
 }
+/* ===== MAPA DE MAQUINARIA EN ARRIENDO (mismo bloque en app.html e index.html) ===== */
+const MQ_FAM = [['martillo', /martillo|accesorio|ripper|placa compactadora|chancador/], ['aljibe', /aljibe|cisterna|estanque/], ['excavadora', /excavadora|excavator/],
+  ['bulldozer', /bulldozer|dozer|tractor (de )?oruga/], ['retro', /retro/], ['motoniveladora', /motoniveladora|niveladora|grader/], ['cargador', /cargador|minicargador|bobcat/],
+  ['rodillo', /rodillo|compactador/], ['grua', /gr[uú]a|pluma|camión pluma/], ['camioneta', /camioneta|4x4|pick ?up/], ['camion', /cami[oó]n|tolva|tracto|rampla|cama baja/]];
+const mqFam = t => { t = (t || '').toLowerCase(); const f = MQ_FAM.find(([, r]) => r.test(t)); return f ? f[0] : 'generico'; };
+const MQ_NOM = {excavadora: 'Excavadora', bulldozer: 'Bulldozer', retro: 'Retroexcavadora', motoniveladora: 'Motoniveladora', cargador: 'Cargador', rodillo: 'Rodillo', aljibe: 'Camión aljibe', camion: 'Camión', camioneta: 'Camioneta', grua: 'Camión pluma', martillo: 'Accesorio', generico: 'Equipo'};
+function mqSvg(f) {
+  const Y = '#f2b705', D = '#2b3440', G = '#9fd3f0', W = (x, y, r) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${D}"/><circle cx="${x}" cy="${y}" r="${r * .4}" fill="#8a96a3"/>`;
+  const oruga = (x, w) => `<rect x="${x}" y="29" width="${w}" height="8" rx="4" fill="${D}"/>${[...Array(Math.max(2, Math.round(w / 8)))].map((_, i, a) => `<circle cx="${x + 4 + i * (w - 8) / (a.length - 1)}" cy="33" r="2" fill="#8a96a3"/>`).join('')}`;
+  const cab = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="2" fill="${Y}"/><rect x="${x + 2}" y="${y + 2}" width="${w - 4}" height="${h * .55}" rx="1" fill="${G}"/>`;
+  const p = {
+    excavadora: `${oruga(5, 32)}<rect x="9" y="20" width="26" height="10" rx="2" fill="${Y}"/>${cab(10, 9, 11, 12)}<g class="mq-arm"><path d="M30 23 L44 7 L48 9 L35 26Z" fill="${Y}"/><path d="M44 7 L57 19 L54 22 L43 11Z" fill="${Y}"/><path d="M54 19 L61 24 L59 32 L50 29Z" fill="${D}"/></g>`,
+    bulldozer: `${oruga(7, 36)}<rect x="10" y="19" width="31" height="11" rx="2" fill="${Y}"/>${cab(15, 7, 14, 13)}<rect x="35" y="11" width="2.5" height="8" fill="${D}"/><path d="M41 25 L48 29" stroke="${D}" stroke-width="2.5"/><g class="mq-arm"><path d="M47 13 L53 13 Q56 25 55 37 L47 37Z" fill="${D}"/></g><path d="M7 26 L2 33" stroke="${D}" stroke-width="2.5"/>`,
+    retro: `${W(15, 31, 7)}${W(42, 33, 5)}<rect x="9" y="20" width="36" height="10" rx="2" fill="${Y}"/>${cab(14, 7, 14, 13)}<g class="mq-arm"><path d="M43 22 L53 20 L54 23 L44 26Z" fill="${Y}"/><path d="M52 15 L62 17 L60 29 L51 26Z" fill="${D}"/></g><path d="M10 22 L3 9 L6 7 L13 19Z" fill="${Y}"/><path d="M2 9 L7 13 L4 18 L0 14Z" fill="${D}"/>`,
+    motoniveladora: `<rect x="5" y="20" width="53" height="4" rx="1" fill="${Y}"/><rect x="3" y="15" width="15" height="9" rx="2" fill="${Y}"/>${cab(16, 6, 12, 15)}${W(9, 32, 5)}${W(21, 32, 5)}${W(56, 32, 5)}<g class="mq-arm"><path d="M29 30 L43 30 L45 35 L27 35Z" fill="${D}"/></g><path d="M36 24 L36 30" stroke="${D}" stroke-width="2"/>`,
+    cargador: `${W(16, 31, 7)}${W(40, 31, 7)}<rect x="8" y="18" width="33" height="12" rx="2" fill="${Y}"/>${cab(19, 5, 13, 13)}<g class="mq-arm"><path d="M36 20 L50 16 L52 20 L38 24Z" fill="${Y}"/><path d="M50 11 L61 13 L61 28 L50 26Z" fill="${D}"/></g>`,
+    rodillo: `${W(14, 31, 7)}<circle cx="47" cy="29" r="9" fill="${D}"/><circle cx="47" cy="29" r="5" fill="#8a96a3"/><rect x="8" y="17" width="31" height="11" rx="2" fill="${Y}"/>${cab(12, 5, 12, 13)}<rect x="37" y="19" width="12" height="3" fill="${Y}"/>`,
+    camion: `<g class="mq-arm"><path d="M3 10 H42 V30 H3Z" fill="${Y}"/><path d="M3 10 H42" stroke="${D}" stroke-width="1.5"/></g>${cab(44, 13, 16, 17)}<rect x="2" y="29" width="58" height="3" fill="${D}"/>${W(12, 34, 5)}${W(23, 34, 5)}${W(52, 34, 5)}`,
+    aljibe: `<rect x="3" y="11" width="39" height="17" rx="8.5" fill="#cfd8e3" stroke="${D}" stroke-width="1.5"/><path d="M14 11 V28 M28 11 V28" stroke="#9aa7b5" stroke-width="1"/>${cab(44, 13, 16, 17)}<rect x="2" y="29" width="58" height="3" fill="${D}"/>${W(12, 34, 5)}${W(23, 34, 5)}${W(52, 34, 5)}`,
+    camioneta: `<path d="M4 22 H24 L30 13 H44 L50 22 H60 V31 H4Z" fill="#e8edf3" stroke="${D}" stroke-width="1.5"/><path d="M32 15 H43 L47 22 H29Z" fill="${G}"/>${W(16, 32, 5)}${W(49, 32, 5)}`,
+    grua: `<g class="mq-arm"><path d="M20 16 L54 3 L55 6 L22 20Z" fill="${Y}"/><path d="M54 5 V20" stroke="${D}" stroke-width="1.2"/><rect x="52" y="19" width="4" height="4" fill="${D}"/></g><rect x="4" y="20" width="38" height="9" fill="#cfd8e3"/>${cab(44, 13, 16, 17)}<rect x="2" y="29" width="58" height="3" fill="${D}"/>${W(12, 34, 5)}${W(23, 34, 5)}${W(52, 34, 5)}`,
+    martillo: `<g class="mq-arm"><path d="M4 33 L30 9 L35 12 L11 36Z" fill="${Y}"/><rect x="31" y="8" width="11" height="20" rx="2" fill="${D}" transform="rotate(-18 36 18)"/><path d="M38 27 L43 26 L42 37Z" fill="#8a96a3"/></g>`,
+    generico: `${W(14, 32, 5)}${W(48, 32, 5)}<rect x="6" y="14" width="50" height="16" rx="3" fill="${Y}"/>${cab(36, 6, 14, 10)}<text x="20" y="26" font-size="10" font-weight="700" fill="${D}">⚙</text>`};
+  return `<svg viewBox="0 0 64 40" width="56" height="35" aria-hidden="true">${p[f] || p.generico}</svg>`;
+}
+const mqE = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const mqF = iso => iso ? iso.slice(8, 10) + '-' + iso.slice(5, 7) + '-' + iso.slice(0, 4) : '';
+const mqN = v => (Math.round(v * 10) / 10).toLocaleString('es-CL');
+const MQ_CSS = `
+.mq-top{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:12.5px;color:#5b6b7f;margin-bottom:10px}
+.mq-top i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.mq-mand{border:1px solid #d7e3f1;border-radius:14px;margin-bottom:14px;overflow:hidden;background:#fff}
+.mq-mh{display:flex;align-items:center;gap:12px;padding:10px 14px;background:linear-gradient(90deg,#eef5fc,#fff);border-bottom:1px solid #d7e3f1}
+.mq-mh img{height:38px;max-width:150px;object-fit:contain}
+.mq-ini{width:38px;height:38px;border-radius:50%;background:#12345e;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+.mq-mh h3{margin:0;font-size:16px;color:#12345e;flex:1}
+.mq-areas{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:12px;padding:12px}
+.mq-area{border:2px dashed #c9d8ea;border-radius:12px;padding:8px 10px 4px;background:repeating-linear-gradient(135deg,#fbfdff,#fbfdff 12px,#f5f9fd 12px,#f5f9fd 24px)}
+.mq-at{font-weight:700;color:#12345e;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px}
+.mq-row{display:grid;grid-template-columns:118px 1fr 104px;gap:8px;align-items:center;padding:6px 0;border-top:1px solid #e8eef6;cursor:pointer}
+.mq-row:first-of-type{border-top:0}
+.mq-row:hover{background:rgba(31,111,235,.05)}
+.mq-lab b{display:block;color:#12345e;font-size:13px}.mq-lab small{display:block;color:#5b6b7f;font-size:11px;line-height:1.2}
+.mq-road{position:relative;height:50px}
+.mq-track{position:absolute;left:0;right:0;bottom:6px;height:8px;border-radius:4px;background:#6b7785;background-image:repeating-linear-gradient(90deg,transparent 0 10px,#fff 10px 18px);background-size:100% 2px;background-repeat:repeat-x;background-position:0 3px}
+.mq-done{position:absolute;left:0;bottom:6px;height:8px;border-radius:4px;opacity:.85;transition:width 1.8s cubic-bezier(.3,.7,.3,1)}
+.mq-flag{position:absolute;right:-4px;bottom:10px;font-size:18px}
+.mq-ini0{position:absolute;left:0;bottom:-8px;font-size:10px;color:#5b6b7f}
+.mq-veh{position:absolute;bottom:8px;width:56px;transition:left 1.8s cubic-bezier(.3,.7,.3,1)}
+.mq-veh.trab svg{animation:mqBob .7s ease-in-out infinite alternate}
+.mq-veh.trab .mq-arm{animation:mqArm 1.6s ease-in-out infinite alternate;transform-box:fill-box;transform-origin:0% 100%}
+.mq-veh.stop{filter:grayscale(1) opacity(.7)}
+@keyframes mqBob{from{transform:translateY(0)}to{transform:translateY(-1.5px)}}
+@keyframes mqArm{from{transform:rotate(0)}to{transform:rotate(-7deg)}}
+.mq-val{text-align:right;font-size:12px;color:#5b6b7f}.mq-val b{display:block;font-size:14px}
+.mq-tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:8px;margin-top:2px}
+.mq-a{background:none;border:0;color:#1f6feb;cursor:pointer;font-size:11px;padding:0}
+@media (max-width:700px){.mq-areas{grid-template-columns:1fr}.mq-row{grid-template-columns:86px 1fr 84px}}
+@media (prefers-reduced-motion:reduce){.mq-veh,.mq-done{transition:none}.mq-veh.trab svg,.mq-veh.trab .mq-arm{animation:none}}`;
+/* S = {ts, items:[{id, eq, pat, fam, mand, mid, area, u, prog, meta, est, ini, ult, corr}]}  ·  logos = {mandante_id: dataURI} */
+function mapaHTML(S, logos, opt = {}) {
+  const hoy = new Date().toISOString().slice(0, 10), it = (S && S.items) || [];
+  if (!it.length) return `<div class="small" style="color:#5b6b7f">No hay máquinas en arriendo activas.</div>`;
+  const dDias = (a, b) => Math.round((new Date(b + 'T12:00:00') - new Date(a + 'T12:00:00')) / 864e5);
+  const extra = x => (x.corr && S.ts) ? Math.max(0, dDias(S.ts.slice(0, 10), hoy)) : 0;   // días corridos desde la foto
+  const grupos = {};
+  it.forEach(x => { const g = grupos[x.mid || x.mand] = grupos[x.mid || x.mand] || {mand: x.mand, mid: x.mid, areas: {}}; (g.areas[x.area || ''] = g.areas[x.area || ''] || []).push(x); });
+  const fila = x => {
+    const prog = (+x.prog || 0) + extra(x), meta = +x.meta || 1, pct = Math.max(0, Math.min(100, prog / meta * 100)), falta = Math.max(0, meta - prog);
+    const col = pct >= 100 ? '#d93025' : pct >= 85 ? '#e0a020' : '#1e8e3e';
+    const stop = x.est === 'falla' || x.est === 'parada', sinRep = x.ult && x.u === 'h' && dDias(x.ult, hoy) > 2;
+    const tag = pct >= 100 ? `<span class="mq-tag" style="background:#fde2df;color:#b3261e">Meta cumplida · corresponde EDP</span>` : pct >= 85 ? `<span class="mq-tag" style="background:#fff1cc;color:#8a5a00">Avisar: ¿prórroga o término?</span>` : '';
+    return `<div class="mq-row" ${opt.click ? `data-mqa="${mqE(x.id)}"` : ''} title="${mqE(x.eq)}">
+      <div class="mq-lab"><b>${mqE(x.pat || MQ_NOM[x.fam])}</b><small>${mqE(MQ_NOM[x.fam] || '')}</small><small>${mqE((x.eq || '').replace(/\s*\([^)]*\)\s*/g, ' ').trim().slice(0, 34))}</small>${opt.areaBtn ? `<button class="mq-a" data-mqarea="${mqE(x.id)}">✎ área</button>` : ''}</div>
+      <div class="mq-road"><div class="mq-track"></div><div class="mq-done" style="width:0;background:${col}" data-w="${pct}"></div><span class="mq-flag">🏁</span>
+        <span class="mq-ini0">${x.ini ? 'desde ' + mqF(x.ini).slice(0, 5) : ''}</span>
+        <div class="mq-veh ${stop ? 'stop' : 'trab'}" style="left:0" data-p="${pct}">${mqSvg(x.fam)}</div></div>
+      <div class="mq-val"><b style="color:${col}">${mqN(prog)} / ${mqN(meta)} ${x.u}</b>${pct >= 100 ? 'cumplida' : 'faltan ' + mqN(falta) + ' ' + x.u}
+        ${stop ? `<br><span class="mq-tag" style="background:#eceff3;color:#3c4652">${x.est === 'falla' ? '⚠️ en falla / taller' : '⏸️ detenida (clima / mandante)'}</span>` : ''}${sinRep ? `<br><span class="mq-tag" style="background:#e7f0fb;color:#1f4e8c">sin reporte desde ${mqF(x.ult).slice(0, 5)}</span>` : ''}${tag ? '<br>' + tag : ''}</div></div>`;
+  };
+  const html = Object.values(grupos).sort((a, b) => (a.mand || '').localeCompare(b.mand || '')).map(g => {
+    const n = Object.values(g.areas).reduce((s, a) => s + a.length, 0), lg = logos && logos[g.mid];
+    return `<div class="mq-mand"><div class="mq-mh">${lg ? `<img src="${lg}" alt="">` : `<div class="mq-ini">${mqE((g.mand || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase())}</div>`}<h3>${mqE(g.mand || 'Sin mandante')}</h3><span class="small" style="color:#5b6b7f">${n} equipo(s)</span>${opt.logoBtn && g.mid ? `<button class="sm" data-mqlogo="${mqE(g.mid)}">${lg ? 'Cambiar logo' : 'Subir logo'}</button>` : ''}</div>
+      <div class="mq-areas">${Object.keys(g.areas).sort((a, b) => !a ? 1 : !b ? -1 : a.localeCompare(b)).map(ar => `<div class="mq-area"><div class="mq-at">📍 ${ar ? mqE(ar) : '<span style="color:#8a96a3">Área sin asignar</span>'}</div>${g.areas[ar].map(fila).join('')}</div>`).join('')}</div></div>`;
+  }).join('');
+  return `<div class="mq-top"><span><i style="background:#1e8e3e"></i>En plazo</span><span><i style="background:#e0a020"></i>Sobre 85 %: avisar al mandante</span><span><i style="background:#d93025"></i>Meta cumplida: EDP</span><span>🏁 meta del período (horas o días)</span>${S.ts && opt.verTs ? `<span style="margin-left:auto">Actualizado al ${mqF(S.ts.slice(0, 10))} ${S.ts.slice(11, 16)}</span>` : ''}</div>${html}`;
+}
+function mapaAnimar(root) {   // las máquinas parten en el inicio y avanzan hasta donde van
+  requestAnimationFrame(() => requestAnimationFrame(() => root.querySelectorAll('.mq-row').forEach(r => {
+    const v = r.querySelector('.mq-veh'), d = r.querySelector('.mq-done'), p = +v.dataset.p || 0;
+    v.style.left = `calc((100% - 80px) * ${p / 100})`; d.style.width = `calc((100% - 34px) * ${p / 100} + 28px)`; })));
+}
+
+document.head.insertAdjacentHTML('beforeend', `<style>${MQ_CSS}</style>`);
+let UBIC = null;
+function renderUbic() {
+  const box = $('ubic'); if (!box) return;
+  if (!UBIC || !UBIC.snap) { box.hidden = true; return; }
+  box.hidden = false;
+  box.innerHTML = `<div class="card"><h2>📍 Ubicación de maquinaria en arriendo</h2><div class="cap">Dónde está cada máquina y cuánto le falta para cumplir su período (horas o días)</div><div id="mqBox">${mapaHTML(UBIC.snap, UBIC.logos || {}, {verTs: true})}</div></div>`;
+  mapaAnimar(box);
+}
 async function loadLive() {
   try {
     try { GEST = await api('rpc/gestion_comercial', {method: 'POST', body: '{}'}); } catch (e) { if (e.message === 'SESSION') throw e; GEST = null; }
@@ -795,6 +898,8 @@ async function loadLive() {
     if ($('goApp')) $('goApp').hidden = !ADMIN;
     render({file: 'datos en vivo de la app de gestión', loaded: nowTxt(new Date()), data});
     renderGestion();
+    try { UBIC = await api('rpc/ubicacion_maquinaria', {method: 'POST', body: '{}'}); } catch (e) { if (e.message === 'SESSION') throw e; UBIC = null; }
+    renderUbic();
     if ($('msg').textContent === 'Cargando datos…') $('msg').innerHTML = '';
     return true;
   } catch (e) {
