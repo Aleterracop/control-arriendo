@@ -264,6 +264,8 @@ async function loadAll() {
   D.hasCC = D.cotizaciones.some(c => 'compartidos' in c);
   D.hasArea = D.arriendos.some(a => 'area' in a);
   setTimeout(guardarUbic, 1500);
+  if (!('mantencion_250' in D.P)) { const row = {clave: 'mantencion_250', valor: 1500000, descripcion: 'Valor por mantención de 250 h cobrada al mandante (traslado ida y vuelta de personal y vehículo). No aplica a mandantes con mantención incluida (Fenix).'};
+    api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([row])}).then(() => { D.parametros.push(row); D.P.mantencion_250 = row.valor; }).catch(() => {}); }
 }
 const P = (k, def) => (D.P && D.P[k] != null && !isNaN(D.P[k])) ? D.P[k] : def;
 const byId = (t, id) => D[t].find(x => x.id === id);
@@ -1086,13 +1088,14 @@ function formMandante(m) {
     <div><label>Nombre</label><input id="mN" value="${esc(m.nombre || '')}"></div>
     <div><label>¿Emite HES?</label><select id="mH"><option value="1" ${m.requiere_hes ? 'selected' : ''}>Sí (minera / empresa)</option><option value="0" ${!m.requiere_hes ? 'selected' : ''}>No (particular)</option></select></div>
     <div><label>Contacto</label><input id="mC" value="${esc(m.contacto || '')}"></div></div>
-    <div style="margin-top:10px"><label>Notas</label><input id="mO" value="${esc(m.notas || '')}"></div>
+    <div style="margin-top:10px"><label>Notas</label><input id="mO" value="${esc((m.notas || '').replace(/\s*\[mant_(incluida|cobrada)\]/g, ''))}"></div>
+    <label class="row small" style="margin-top:8px;gap:6px;cursor:pointer"><input type="checkbox" id="mMi" style="width:auto" ${mantIncluida({mandante_id: m.id, cliente: m.nombre}) ? 'checked' : ''}> Mantención cada 250 h <b>incluida</b> en la tarifa (tenemos personal en su faena). Si no, en la oferta sale cobrada aparte (${clp(P('mantencion_250', 1500000))} + IVA por mantención).</label>
     ${!nuevo && 'logo' in m ? `<div class="row" style="margin-top:10px;gap:10px">${m.logo ? `<img src="${m.logo}" style="height:40px;max-width:160px;object-fit:contain;border:1px solid var(--line);border-radius:6px;padding:3px">` : '<span class="small muted">Sin logo</span>'}<button id="mLg">${m.logo ? 'Cambiar logo' : 'Subir logo'}</button>${m.logo ? '<a href="#" id="mLgX" class="small">quitar</a>' : ''}<span class="small muted">Se guarda en Supabase (no en GitHub) y aparece en el mapa de maquinaria.</span></div>` : ''}
     <div class="mf"><button id="mCan">Cancelar</button><button class="pri" id="mOk">Guardar</button></div>`);
   $('mCan').onclick = closeModal;
   if ($('mLg')) $('mLg').onclick = () => subirLogoMand(m);
   if ($('mLgX')) $('mLgX').onclick = e => { e.preventDefault(); if (confirm('¿Quitar el logo?')) guardar(() => upd('mandantes', m.id, {logo: null}), 'Logo quitado'); };
-  $('mOk').onclick = () => { if (!val('mN')) return alert('Escriba el nombre.'); const o = {nombre: val('mN'), requiere_hes: val('mH') === '1', contacto: val('mC') || null, notas: val('mO') || null}; guardar(() => nuevo ? ins('mandantes', o) : upd('mandantes', m.id, o), 'Mandante guardado'); };
+  $('mOk').onclick = () => { if (!val('mN')) return alert('Escriba el nombre.'); const fen = /f[eé]nix/i.test(val('mN')), mi = $('mMi').checked, tag = mi && !fen ? ' [mant_incluida]' : !mi && fen ? ' [mant_cobrada]' : ''; const o = {nombre: val('mN'), requiere_hes: val('mH') === '1', contacto: val('mC') || null, notas: ((val('mO') || '') + tag).trim() || null}; guardar(() => nuevo ? ins('mandantes', o) : upd('mandantes', m.id, o), 'Mandante guardado'); };
 }
 
 /* ================================================================
@@ -1913,6 +1916,7 @@ function valoresDoc(c, S, minera) {
   };
 }
 const V = k => `<span data-v="${k}" contenteditable="false"></span>`;
+const mantIncluida = c => { const m = byId('mandantes', c.mandante_id) || {}; return /\[mant_incluida\]/.test(m.notas || '') || (!/\[mant_cobrada\]/.test(m.notas || '') && /f[eé]nix/i.test((m.nombre || '') + ' ' + (c.cliente || ''))); };
 function textosBase(c, S, minera) {
   const eqTxt = S.lista.length === 1 ? nombreEquipos(S.lista[0].nombre, S.lista[0].n) : S.lista.map(g => nombreEquipos(g.nombre, g.n)).join(', ') || 'equipos';
   const turno = S.turno ? TURNOTXT[S.turno] : 'en jornada diurna', cont = S.turno && S.turno !== '5x2' ? ' continuos' : '';
@@ -1933,7 +1937,8 @@ function textosBase(c, S, minera) {
   }
   if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día (sin sistema supresor de incendio automático o semiautomático).</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
-  al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
+  if (mantIncluida(c)) al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
+  else al.push(`La mantención preventiva cada 250 horas máquina será realizada por el equipo de mantenimiento de Terracop en faena. Su costo, que considera el mecánico y su traslado de ida y vuelta a faena en vehículo de apoyo, será de cargo del mandante, con un valor de ${clp(P('mantencion_250', 1500000))} + IVA por cada mantención.`);
   if (S.op && S.al === 'terracop') al.push(S.cam ? 'Se considera la alimentación y el alojamiento de los operadores, por cuenta de Terracop.' : 'Se considera la alimentación, el alojamiento y el traslado de los operadores hasta el área de trabajo, por cuenta de Terracop.');
   if (S.cam) al.push(`Se considera como alcance del servicio el aporte de Terracop de un vehículo 4x4 equipado para las labores en cuestión, para el traslado del personal desde <mark class="cpfal">[lugar de origen]</mark> hasta ${V('faena')}.`);
   else if (S.op && S.al !== 'terracop') al.push('Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
@@ -2173,7 +2178,7 @@ async function docxDesdeHTML(root) {
 }
 
 /* ---------- Costos compartidos: se reparten (prorratean) en el costo de los equipos ---------- */
-const CC_RAPIDOS = [['Supervisor', 'mes', 1, 'supervisor'], ['Prevencionista de riesgos', 'mes', 1, 'prevencion'], ['Vehículo de apoyo 4x4 · traslado de personal (propio)', 'día', 30, 'camioneta'], ['Vehículo de apoyo 4x4 · traslado de personal (arrendado)', 'mes', 1, 'cam_arr'], ['Combustible vehículo de apoyo', 'litro', 600, 'diesel'], ['Container / campamento', 'mes', 1, 'container'], ['Radio portátil / base', 'mes', 1, 'radio'], ['Internet satelital Starlink', 'mes', 1, 'starlink'], ['Oxígeno / equipo de emergencia altura', 'mes', 1, 'oxigeno'], ['Instalación de faena', 'gl', 1, 'faena'], ['Baño químico', 'mes', 1, 'bano'], ['Conductor vehículo de apoyo', 'mes', 1, 'chofer'], ['Exámenes ocupacionales / altura geográfica', 'persona', 1, 'examenes'], ['Pasajes y traslados de personal', 'viaje', 1, 'pasajes']];
+const CC_RAPIDOS = [['Supervisor', 'mes', 1, 'supervisor'], ['Prevencionista de riesgos', 'mes', 1, 'prevencion'], ['Vehículo de apoyo 4x4 · traslado de personal (propio)', 'día', 30, 'camioneta'], ['Vehículo de apoyo 4x4 · traslado de personal (arrendado)', 'mes', 1, 'cam_arr'], ['Combustible vehículo de apoyo', 'litro', 600, 'diesel'], ['Container / campamento', 'mes', 1, 'container'], ['Radio portátil / base', 'mes', 1, 'radio'], ['Internet satelital Starlink', 'mes', 1, 'starlink'], ['Oxígeno / equipo de emergencia altura', 'mes', 1, 'oxigeno'], ['Instalación de faena', 'gl', 1, 'faena'], ['Baño químico', 'mes', 1, 'bano'], ['Conductor vehículo de apoyo', 'mes', 1, 'chofer'], ['Exámenes ocupacionales / altura geográfica', 'persona', 1, 'examenes'], ['Pasajes y traslados de personal', 'viaje', 1, 'pasajes'], ['Mantención 250 h en faena (mecánico + vehículo + traslado)', 'mantención', 1, 'mant250']];
 const hrsItem = it => { const q = +it.cantidad || 0, m = it.meta || {}; return it.unidad === 'hm' ? q : it.unidad === 'mes' ? q * P('horas_mes', 180) : it.unidad === 'día' ? q * (m.hd || P('horas_mes', 180) / 30) : q; };
 function aplicarCompartidos(c) {   // recalcula la parte de cada equipo y la deja en su costo (y en su 🧮)
   const cc = c.compartidos || {rows: []}, rows = cc.rows || [], total = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0);
@@ -2210,8 +2215,9 @@ function bindCompartidos() {
   if (!COT || !document.getElementById('ccBox')) return;
   const CC = () => { COT.compartidos = COT.compartidos || {rows: [], modo: 'horas'}; COT.compartidos.rows = COT.compartidos.rows || []; return COT.compartidos; };
   const redo = () => setTimeout(() => { if (!$('ccBox') || !COT) return; $('ccBox').innerHTML = compartidosHTML(COT); bindCompartidos(); renderItems(); }, 0);
-  document.querySelectorAll('[data-ccq]').forEach(b => b.onclick = () => { const k = +b.dataset.ccq, x = CC_RAPIDOS[k];
-    const prev = x ? {supervisor: P('sueldo_supervisor', 0), prevencion: P('sueldo_prevencionista', 0), camioneta: P('camioneta_dia', 60000), diesel: P('diesel', 1500)}[x[3]] || null : null;
+  document.querySelectorAll('[data-ccq]').forEach(b => b.onclick = () => { const k = +b.dataset.ccq; let x = CC_RAPIDOS[k];
+    const prev = x ? {supervisor: P('sueldo_supervisor', 0), prevencion: P('sueldo_prevencionista', 0), camioneta: P('camioneta_dia', 60000), diesel: P('diesel', 1500), mant250: P('mantencion_250', 1500000)}[x[3]] || null : null;
+    if (x && x[3] === 'mant250') { const h = (COT.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !/moviliz/i.test(i.desc || '')).reduce((t, i) => t + hrsItem(i), 0); x = [...x]; x[2] = Math.max(1, Math.floor(h / 250)); toast(`Mantenciones de 250 h: ${x[2]} (${nf(h)} h de equipos en total). Ajuste la cantidad si hace falta.`); }
     CC().rows.push(x ? {c: x[0], u: x[1], q: x[2], p: prev} : {c: '', u: 'gl', q: 1, p: null}); redo(); });
   if ($('ccPer')) $('ccPer').onchange = () => { const pe = byId('personal', $('ccPer').value); if (!pe) return;
     CC().rows.push({c: pe.cargo, u: 'mes', q: 1, p: Math.round((+pe.valor_hh || 0) * P('horas_mes', 180)) || null}); redo(); };
