@@ -1558,6 +1558,7 @@ function asistenteEquipo() {
     $('wConv').innerHTML = (enUF ? `Costo del equipo: ${nf(tar, 2)} UF × ${clp(ufv)} (valor UF) = <b>${clp(tar$)} / ${esc(u)}</b> neto. El IVA del proveedor no es costo (se recupera como crédito fiscal).` : $('wConv').innerHTML);
     if (T) rows.push({c: (sub ? `Arriendo ${T.nombre} a ${val('wProv') || 'proveedor'}` : 'Equipo ' + T.nombre) + (enUF ? ` (${nf(tar, 2)} UF)` : ''), u, q: q * n, p: tar$});
     // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
+    $('wNo').parentElement.hidden = $('wPg').parentElement.hidden = $('wAl').parentElement.hidden = !o;   // sin operador: no aplican operadores, su pago ni su alimentación
     const nOp = +val('wNo') || 1, pagoMes = val('wPg') === 'mes', rot = nOp === 2 && pagoMes ? 2 : 1;
     if (o) rows.push({c: o.cargo + (nOp === 2 ? (pagoMes ? ` × 2 (turno ${val('wTu')}: 2 operadores en rotación, cada uno con su mes completo)` : ` (turno ${val('wTu')}: 2 operadores en rotación, horas repartidas entre ambos)`) : ` (turno ${val('wTu')}: 1 operador)`), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
     $('wOpInfo').innerHTML = o ? `👷 <b>${nOp * n} operador(es) en total</b> (${nOp} por equipo × ${n} equipo(s)). ${nOp === 2 ? `En faena hay 1 operador por equipo a la vez, así que la alimentación y el alojamiento se calculan para ${n} persona(s) por día. ` : ''}No agregue otro operador en el 🧮: ya está incluido aquí.` : '';
