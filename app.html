@@ -2378,7 +2378,9 @@ async function syncLic(c) {
   const ex = D.licitaciones.find(l => String(l.codigo || '') === String(c.numero));
   const arr = (c.items || []).some(i => i.tipo === 'i' && i.equipo_tipo_id);
   const o = {estado: est, monto_oferta: t.neto || null, fecha_envio: c.fecha_envio || (ex && ex.fecha_envio) || c.fecha, actualizado: new Date().toISOString()};
-  if (est === 'adjudicada') { o.fecha_adjudicacion = (ex && ex.fecha_adjudicacion) || c.fecha_adjudicacion || todayISO(); if (!ex || !ex.monto_adjudicado) o.monto_adjudicado = t.neto || null; if (!ex || !ex.monto_total) o.monto_total = t.neto || null; }
+  if (est === 'adjudicada') { o.fecha_adjudicacion = (ex && ex.fecha_adjudicacion) || c.fecha_adjudicacion || todayISO();
+    const sinTocar = v => !ex || !+v || Math.abs(+v - (+ex.monto_oferta || 0)) < 1;   // el monto lo puso la app (= la oferta anterior): se actualiza; si se editó a mano, se respeta
+    if (sinTocar(ex && ex.monto_adjudicado)) o.monto_adjudicado = t.neto || null; if (sinTocar(ex && ex.monto_total)) o.monto_total = t.neto || null; }
   if (est === 'no_adjudicada' && /Perdida:/i.test(c.notas || '') && (!ex || !ex.motivo)) o.motivo = (c.notas.match(/Perdida:\s*([^·]+)/i) || [])[1] || null;
   try {
     if (ex) { const r = await upd('licitaciones', ex.id, o); Object.assign(ex, r || o); }
