@@ -395,14 +395,14 @@ async function go() {
     if (confirm('La cotización tiene cambios sin guardar (precios, cantidades u otros datos).\n\nAceptar = Guardar los cambios\nCancelar = Descartarlos')) await saveCot(true); else COT = null;
   }
   lastHash = h; if ($('calc').hidden) drawCalc();
-  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (/^c[dp]?-/.test(h) && a.dataset.v === 'cotizar')));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('on', h.startsWith(a.dataset.v) || (h.startsWith('a-') && a.dataset.v === 'arriendos') || (h === 'proyeccion' && a.dataset.v === 'gestion') || (/^c[dp]?-/.test(h) && a.dataset.v === 'cotizar')));
   const v = $('view');
   try {
     if (h.startsWith('a-')) return vArriendo(h.slice(2));
     if (h.startsWith('cd-')) return docCot(h.slice(3));
     if (h.startsWith('cp-')) return docCompleto(h.slice(3));
     if (h.startsWith('c-')) return vCot(h.slice(2));
-    ({inicio: vInicio, cotizar: vCotizaciones, gestion: vGestion, ubicacion: vUbicacion, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
+    ({inicio: vInicio, cotizar: vCotizaciones, gestion: vGestion, ubicacion: vUbicacion, proyeccion: vProyeccion, arriendos: vArriendos, flota: vFlota, catalogo: vCatalogo, mandantes: vMandantes}[h] || vInicio)();
   } catch (e) { v.innerHTML = `<div class="msg err">${esc(e.message)}</div>`; }
   const n = alertas().filter(x => x.lv === 'red' || x.lv === 'orange').length;
   $('ncnt').hidden = !n; $('ncnt').textContent = n;
@@ -2292,7 +2292,7 @@ function vGestion() {
     .sort((a, b) => (b.fecha_adjudicacion || b.fecha_envio || b.fecha_inicio || '').localeCompare(a.fecha_adjudicacion || a.fecha_envio || a.fecha_inicio || ''));
   const cnt = e => L.filter(l => e === 'abiertas' ? abiertas.includes(l.estado) : e === 'todas' || l.estado === e).length;
   $('view').innerHTML = `
-  <div class="row" style="margin-bottom:10px"><div><h2 style="margin:0">📊 Gestión comercial</h2><div class="small muted">Responsable de la cartera comercial: <b>${esc(AJ('firmante_nombre') || 'Alejandro Osorio Correa')}</b> · ${esc(AJ('firmante_cargo') || 'Encargado de Gestión Comercial y Control')}</div></div><span class="sp"></span><button class="pri" id="gNew">＋ Nueva licitación / oferta</button></div>
+  <div class="row" style="margin-bottom:10px"><div><h2 style="margin:0">📊 Gestión comercial</h2><div class="small muted">Responsable de la cartera comercial: <b>${esc(AJ('firmante_nombre') || 'Alejandro Osorio Correa')}</b> · ${esc(AJ('firmante_cargo') || 'Encargado de Gestión Comercial y Control')}</div></div><span class="sp"></span><button onclick="location.hash='proyeccion'" title="Estimado de ventas del próximo mes">📈 Proyección del mes</button> <button class="pri" id="gNew">＋ Nueva licitación / oferta</button></div>
   <div class="card"><div class="row" style="gap:8px">
     <label class="row small" style="margin:0;gap:4px">Período <select id="gPer" style="width:auto"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.map(m => `<option value="${m}">${mesTxt(m)}</option>`).join('')}</select></label>
     <label class="row small" style="margin:0;gap:4px">Unidad <select id="gUn" style="width:auto"><option value="">Todas</option><option>Terracop</option><option>Maestranza</option><option>Transporte</option></select></label>
@@ -2596,6 +2596,86 @@ function mapaAnimar(root) {   // las máquinas parten en el inicio y avanzan has
 
 document.head.insertAdjacentHTML('beforeend', `<style>${MQ_CSS}</style>`);
 
+/* ---------------- Proyección de ventas del mes ---------------- */
+const finMes = m => { const [y, mm] = m.split('-').map(Number); return m + '-' + String(new Date(y, mm, 0).getDate()).padStart(2, '0'); };
+const mesNom = m => new Date(m + '-15T12:00:00').toLocaleDateString('es-CL', {month: 'long', year: 'numeric'});
+const mesSig = () => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + 1); return d.toISOString().slice(0, 7); };
+const durMeses = t => { t = String(t || '').toLowerCase().replace(',', '.'); let m = t.match(/(\d+(?:\.\d+)?)\s*mes/); if (m) return +m[1]; m = t.match(/(\d+)\s*d[ií]a/); if (m) return Math.max(1 / 30, +m[1] / 30); m = t.match(/(\d+)\s*semana/); if (m) return +m[1] * 7 / 30; return null; };
+const probLic = l => { const m = String(l.probabilidad || '').match(/(\d+(?:[.,]\d+)?)\s*%/); return m ? +m[1].replace(',', '.') / 100 : null; };
+const iniciaLic = (l, mes) => String(l.probabilidad || '').includes('|' + mes);
+function tasaHistorica() { const L = (D.licitaciones || []).filter(l => !/prueba/i.test([l.proyecto, l.notas, l.mandante].join(' ')));
+  const g = L.filter(l => l.estado === 'adjudicada').length, p = L.filter(l => l.estado === 'no_adjudicada').length; return g + p ? g / (g + p) : 0.3; }
+function proyeccion(mes) {
+  const m1 = mes + '-01', m2 = finMes(mes), ndm = +m2.slice(8), hoy = todayISO(), maq = [];
+  D.arriendos.filter(a => ['palabra', 'con_oc'].includes(a.estado) && a.modalidad !== 'global' && !esPruebaArr(a)).forEach(a => {
+    const ini = a.fecha_inicio && a.fecha_inicio > m1 ? a.fecha_inicio : m1, fin = a.modalidad !== 'hora' && a.fecha_fin && a.fecha_fin < m2 ? a.fecha_fin : m2;   // por día/mes respeta el "vigente hasta"
+    const dd = ini > fin ? 0 : days(ini, fin) + 1; if (ini > m2) return;
+    const m = mandante(a), fl = byId('flota', a.flota_id), tar = +a.tarifa || 0; let q, u, ritmo = null, base = '';
+    if (a.modalidad === 'hora') {
+      const desde = addDays(hoy, -14), rs = D.horometros.filter(h => h.arriendo_id === a.id && h.fecha >= desde && h.h_fin != null && h.h_ini != null);
+      const hrs = rs.reduce((t, h) => t + Math.max(0, h.h_fin - h.h_ini), 0), span = Math.max(1, Math.min(14, a.fecha_inicio ? days(a.fecha_inicio > desde ? a.fecha_inicio : desde, hoy) : 14));
+      ritmo = rs.length ? hrs / span : (+a.base_cobro || 180) / 30; base = rs.length ? `ritmo de los últimos ${span} días` : 'sin reportes recientes: 180 h al mes';
+      q = Math.round(ritmo * dd); u = 'h';
+    } else if (a.modalidad === 'mes') { q = Math.round(dd / ndm * 100) / 100; u = 'mes'; base = 'mensual'; }
+    else { q = dd; u = 'días'; base = 'días corridos'; }
+    const desm = a.fecha_fin && a.fecha_fin >= m1 && a.fecha_fin <= m2 ? +a.desmovilizacion || 0 : 0;
+    if (!dd) base = `vigente hasta ${fd(a.fecha_fin)}: sin venta en el mes salvo prórroga`; else if (fin < m2) base += ` hasta el ${fd(fin)} (vigente hasta)`;
+    maq.push({id: a.id, eq: a.descripcion, pat: fl ? fl.patente || fl.codigo : '', mand: m.nombre || '', mod: a.modalidad, q, u, ritmo, base, tar, dd, venta: Math.round(q * tar) + desm, desm, sinOC: a.estado === 'palabra'});
+  });
+  const caja = [];   // cobros: EDP enviados sin pago (factura a ~30 días) y EDP por enviar
+  D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => { const c = calc(a), m = mandante(a);
+    c.edps.forEach(e => { if (e.fecha_pago) return; const env = e.fecha_envio || null; if (env && env < addDays(hoy, -75)) return; const est = env ? addDays(env, 30) : addDays(hoy, 35);
+      if (est <= m2) caja.push({eq: a.descripcion, mand: m.nombre || '', n: e.n, env, est: est < m1 ? m1 : est, monto: c.monto(e), borr: e.estado === 'borrador'}); }); });
+  const th = tasaHistorica(), lic = [];
+  (D.licitaciones || []).filter(l => l.estado === 'enviada' && !/prueba/i.test([l.proyecto, l.notas, l.mandante].join(' '))).forEach(l => {
+    const dm = durMeses(l.duracion), of = +l.monto_oferta || 0, mens = dm ? of / Math.max(1, dm) : 0, pr = probLic(l) ?? th, inicia = iniciaLic(l, mes);
+    lic.push({id: l.id, cod: l.codigo, mand: l.mandante, proy: l.proyecto, of, dur: l.duracion || '', dm, mens: Math.round(mens), pr, inicia, aporte: inicia && dm ? Math.round(mens * pr * 0.5) : 0});
+  });
+  const porIniciar = (D.cotizaciones || []).filter(c => c.estado === 'adjudicada' && !(c.notas || '').includes('[sin_arriendo]') && (!c.arriendo_id || !byId('arriendos', c.arriendo_id)) && !esPruebaCot(c))
+    .map(c => ({n: nCot(c), mand: (byId('mandantes', c.mandante_id) || {}).nombre || c.cliente || '', ref: c.referencia || '', monto: (c.items || []).filter(i => i.tipo === 'i' && !i.oculto).reduce((t, i) => t + (+i.cantidad || 0) * (+i.precio || 0), 0)}));
+  const S = (a, f) => a.reduce((t, x) => t + (f(x) || 0), 0);
+  return {mes, th, maq, caja, lic, porIniciar, tot: {maq: S(maq, x => x.venta), caja: S(caja, x => x.monto), lic: S(lic, x => x.aporte), porIni: S(porIniciar, x => x.monto)}};
+}
+let PROY_MES = null;
+function vProyeccion() {
+  const mes = PROY_MES || mesSig(), R = proyeccion(mes), T = R.tot;
+  const opts = [0, 1, 2].map(k => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + k); const v = d.toISOString().slice(0, 7); return `<option value="${v}" ${v === mes ? 'selected' : ''}>${mesNom(v)}</option>`; }).join('');
+  $('view').innerHTML = `<div class="row" style="margin-bottom:10px;gap:10px"><div><h2 style="margin:0">📈 Proyección de ventas · ${esc(mesNom(mes))}</h2><div class="small muted">Estimación con los datos de hoy (${fd(todayISO())}). Maquinaria según el ritmo real de cada equipo; licitaciones ponderadas por probabilidad.</div></div><span class="sp"></span>
+    <select id="pyM" style="width:auto">${opts}</select><button id="pyX">⬇ Excel</button><button id="pyP">🖨 Imprimir / PDF</button><button onclick="location.hash='gestion'">← Gestión</button></div>
+  <div class="kpis">
+    <div class="kpi g"><div class="l">Maquinaria en arriendo (venta del mes)</div><div class="v">${clp(T.maq)}</div><div class="small muted">${R.maq.length} equipo(s) activos · escenario conservador</div></div>
+    <div class="kpi"><div class="l">Licitaciones que podrían iniciar (ponderado)</div><div class="v">${clp(T.lic)}</div><div class="small muted">${R.lic.filter(x => x.inicia).length} marcada(s) para iniciar en el mes</div></div>
+    <div class="kpi" style="border-left-color:var(--navy)"><div class="l">Total ventas esperado</div><div class="v">${clp(T.maq + T.lic)}</div><div class="small muted">maquinaria + licitaciones ponderadas</div></div>
+    <div class="kpi o"><div class="l">Cobros esperados en el mes (caja)</div><div class="v">${clp(T.caja)}</div><div class="small muted">EDP ya emitidos, pago a ~30 días</div></div>
+  </div>
+  <div class="card"><h3 style="margin-top:0">1 · Maquinaria en arriendo</h3><div class="small muted" style="margin-bottom:6px">Arriendos por hora: horas por día de los últimos 14 días × días del mes × tarifa. Por día: días corridos × tarifa. Por mes: tarifa mensual. Incluye desmovilización si el arriendo termina en el mes.</div>
+    <div class="tw"><table><thead><tr><th>Mandante</th><th>Equipo</th><th>Base del cálculo</th><th class="n">Días</th><th class="n">Producción</th><th class="n">Tarifa</th><th class="n">Venta estimada</th></tr></thead><tbody>
+    ${R.maq.map(x => `<tr data-pya="${x.id}" style="cursor:pointer"><td>${esc(x.mand)}</td><td><b>${esc(x.pat || '')}</b> ${esc(x.eq)}${x.sinOC ? ' <span class="chip c-orange">sin OC</span>' : ''}</td><td class="small">${esc(x.base)}${x.ritmo != null ? ` (${nf(x.ritmo, 1)} h/día)` : ''}${x.desm ? ` · + desmov. ${clp(x.desm)}` : ''}</td><td class="n">${x.dd}</td><td class="n">${nf(x.q, x.u === 'mes' ? 2 : 0)} ${x.u}</td><td class="n">${clp(x.tar)}</td><td class="n">${clp(x.venta)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin arriendos activos.</td></tr>'}
+    <tr style="font-weight:700;background:#f1f5fb"><td colspan="6">Total maquinaria</td><td class="n">${clp(T.maq)}</td></tr></tbody></table></div>
+    <div class="small muted" style="margin-top:6px">Supone que los equipos siguen trabajando todo el mes al mismo ritmo. Si un arriendo termina antes, márquelo con su fecha de término y la proyección se ajusta.</div></div>
+  <div class="card"><h3 style="margin-top:0">2 · Licitaciones y ofertas en espera</h3>
+    <div class="small muted" style="margin-bottom:6px">Marque <b>"Inicia en ${esc(mesNom(mes))}"</b> en las que podrían partir este mes. Se cuenta <b>medio mes</b> del monto mensual × la probabilidad. Probabilidad por defecto: su tasa histórica de adjudicación (<b>${nf(R.th * 100)}%</b>); la puede cambiar en cada una.</div>
+    <div class="tw"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio</th><th class="n">Oferta</th><th>Duración</th><th class="n">Mensual</th><th class="n">Prob. %</th><th>Inicia en el mes</th><th class="n">Aporte al mes</th></tr></thead><tbody>
+    ${R.lic.map(x => `<tr><td>${esc(x.cod || '')}</td><td>${esc(x.mand || '')}</td><td>${esc((x.proy || '').slice(0, 55))}</td><td class="n">${clp(x.of)}</td><td><input data-pyd="${x.id}" value="${esc(x.dur)}" placeholder="ej. 3 meses" style="width:100px${x.dm ? '' : ';border-color:#e0a020'}"></td><td class="n">${x.dm ? clp(x.mens) : '<span class="small" style="color:#b45309">falta duración</span>'}</td>
+      <td class="n"><input data-pyp="${x.id}" value="${Math.round(x.pr * 100)}" style="width:60px;text-align:right"></td><td><input type="checkbox" data-pyi="${x.id}" ${x.inicia ? 'checked' : ''} style="width:auto"></td><td class="n">${clp(x.aporte)}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Sin ofertas en espera.</td></tr>'}
+    <tr style="font-weight:700;background:#f1f5fb"><td colspan="8">Total ponderado</td><td class="n">${clp(T.lic)}</td></tr></tbody></table></div>
+    ${R.porIniciar.length ? `<div class="small" style="margin-top:8px"><b>Adjudicadas por iniciar</b> (aún sin arriendo; si parten este mes, súmelas al escenario optimista): ${R.porIniciar.map(c => `${esc(c.n)} ${esc(c.mand)} ${clp(c.monto)}`).join(' · ')}</div>` : ''}
+    <div class="small muted" style="margin-top:6px">Escriba la <b>duración</b> de cada oferta (ej. "3 meses", "21 días", "24 meses"): con ella se calcula el monto mensual. Sin duración no se suma, para no inflar la proyección. Se guarda en el registro comercial.</div></div>
+  <div class="card"><h3 style="margin-top:0">3 · Cobros esperados en el mes (caja)</h3><div class="small muted" style="margin-bottom:6px">EDP enviados en los últimos 75 días (o por enviar) sin pago registrado, cuyo pago estimado (envío + 30 días) cae dentro del mes. Montos netos, sin IVA. Si registra la fecha de pago en cada EDP, la proyección se afina.</div>
+    <div class="tw"><table><thead><tr><th>Mandante</th><th>Equipo / servicio</th><th>EDP</th><th>Enviado</th><th>Pago estimado</th><th class="n">Monto neto</th></tr></thead><tbody>
+    ${R.caja.map(x => `<tr><td>${esc(x.mand)}</td><td>${esc(x.eq)}</td><td>N° ${x.n}${x.borr ? ' <span class="chip c-orange">por enviar</span>' : ''}</td><td>${x.env ? fd(x.env) : '—'}</td><td>${fd(x.est)}</td><td class="n">${clp(x.monto)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Sin cobros pendientes.</td></tr>'}
+    <tr style="font-weight:700;background:#f1f5fb"><td colspan="5">Total cobros esperados</td><td class="n">${clp(T.caja)}</td></tr></tbody></table></div></div>`;
+  $('pyM').onchange = () => { PROY_MES = val('pyM'); vProyeccion(); };
+  $('pyP').onclick = () => window.print();
+  $('pyX').onclick = () => { const html = `<html><head><meta charset="utf-8"></head><body><h2>Proyección de ventas · ${mesNom(mes)}</h2>${[...$('view').querySelectorAll('.card')].map(cd => cd.querySelector('h3').outerHTML + cd.querySelector('table').outerHTML.replace(/<input[^>]*data-pyd[^>]*value="([^"]*)"[^>]*>/g, '$1').replace(/<input[^>]*value="(\d+)"[^>]*>/g, '$1').replace(/<input[^>]*checked[^>]*>/g, 'Sí').replace(/<input[^>]*>/g, 'No')).join('<br>')}</body></html>`;
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['﻿' + html], {type: 'application/vnd.ms-excel'})); a.download = `Proyeccion_ventas_${mes}.xls`; a.click(); };
+  document.querySelectorAll('[data-pya]').forEach(tr => tr.onclick = e => { if (e.target.closest('td.n')) return; location.hash = 'a-' + tr.dataset.pya; });
+  const guardaLic = (id, pr, ini) => { const l = byId('licitaciones', id); if (!l) return; const otros = String(l.probabilidad || '').split('|').slice(1).filter(x => x !== mes);
+    const v = `${pr}%` + (ini ? '|' + mes : '') + (otros.length ? '|' + otros.join('|') : ''); guardar(() => upd('licitaciones', id, {probabilidad: v}), 'Proyección actualizada'); };
+  document.querySelectorAll('[data-pyp]').forEach(i => i.onchange = () => guardaLic(i.dataset.pyp, Math.max(0, Math.min(100, Math.round(num(i.value) || 0))), document.querySelector(`[data-pyi="${i.dataset.pyp}"]`).checked));
+  document.querySelectorAll('[data-pyd]').forEach(i => i.onchange = () => guardar(() => upd('licitaciones', i.dataset.pyd, {duracion: i.value.trim() || null}), 'Duración guardada'));
+  document.querySelectorAll('[data-pyi]').forEach(i => i.onchange = () => guardaLic(i.dataset.pyi, Math.round(num(document.querySelector(`[data-pyp="${i.dataset.pyi}"]`).value) || 0), i.checked));
+}
 /* ---------- EDP por enviar y HES pendientes (detalle) ---------- */
 function listaPendientes() {
   const hoy = todayISO(), env = [], hes = [];
@@ -2635,7 +2715,8 @@ function snapUbic() {
 async function guardarUbic() {   // deja la foto para el panel de don Nelson (solo si cambió)
   if (D.sinCot || !D.hasArea) return;
   try { const S = snapUbic(), prev = JSON.parse(AJ('ubicacion') || '{}');
-    if (JSON.stringify(prev.items || []) === JSON.stringify(S.items) && (prev.ts || '').slice(0, 10) === S.ts.slice(0, 10)) return;
+    try { const R = proyeccion(mesSig()); S.proy = {mes: R.mes, th: R.th, tot: R.tot, maq: R.maq.map(x => ({mand: x.mand, eq: x.eq, pat: x.pat, base: x.base, q: x.q, u: x.u, tar: x.tar, venta: x.venta})), lic: R.lic.filter(x => x.inicia).map(x => ({cod: x.cod, mand: x.mand, proy: x.proy, mens: x.mens, pr: x.pr, aporte: x.aporte})), nCaja: R.caja.length, nLic: R.lic.length}; } catch (e) {}
+    if (JSON.stringify(prev.items || []) === JSON.stringify(S.items) && JSON.stringify(prev.proy || null) === JSON.stringify(S.proy || null) && (prev.ts || '').slice(0, 10) === S.ts.slice(0, 10)) return;
     await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave: 'ubicacion', valor: JSON.stringify(S)})}); D.ajustesMap.ubicacion = JSON.stringify(S);
   } catch (e) {}
 }

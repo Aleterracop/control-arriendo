@@ -788,7 +788,7 @@ function renderGestion() {
 /* ===== MAPA DE MAQUINARIA EN ARRIENDO (mismo bloque en app.html e index.html) ===== */
 const MQ_FAM = [['martillo', /martillo|accesorio|ripper|placa compactadora|chancador/], ['aljibe', /aljibe|cisterna|estanque/], ['excavadora', /excavadora|excavator/],
   ['bulldozer', /bulldozer|dozer|tractor (de )?oruga/], ['retro', /retro/], ['motoniveladora', /motoniveladora|niveladora|grader/], ['cargador', /cargador|minicargador|bobcat/],
-  ['rodillo', /rodillo|compactador/], ['grua', /gr[uú]a|pluma|camión pluma/], ['camioneta', /camioneta|4x4|pick ?up/], ['camion', /cami[oó]n|tolva|tracto|rampla|cama baja/]];
+  ['rodillo', /rodillo|compactador/], ['grua', /gr[uú]a|pluma|camión pluma/], ['camioneta', /camioneta|4x4|pick ?up|mini ?bus|porter|furg/], ['camion', /cami[oó]n|tolva|tracto|rampla|cama baja/]];
 const mqFam = t => { t = (t || '').toLowerCase(); const f = MQ_FAM.find(([, r]) => r.test(t)); return f ? f[0] : 'generico'; };
 const MQ_NOM = {excavadora: 'Excavadora', bulldozer: 'Bulldozer', retro: 'Retroexcavadora', motoniveladora: 'Motoniveladora', cargador: 'Cargador', rodillo: 'Rodillo', aljibe: 'Camión aljibe', camion: 'Camión', camioneta: 'Camioneta', grua: 'Camión pluma', martillo: 'Accesorio', generico: 'Equipo'};
 function mqSvg(f) {
@@ -880,7 +880,20 @@ function mapaAnimar(root) {   // las máquinas parten en el inicio y avanzan has
 
 document.head.insertAdjacentHTML('beforeend', `<style>${MQ_CSS}</style>`);
 let UBIC = null;
+function renderProy() {
+  let box = $('proy'); if (!box) { $('ubic').insertAdjacentHTML('beforebegin', '<section id="proy" hidden></section>'); box = $('proy'); }
+  const P = UBIC && UBIC.snap && UBIC.snap.proy; if (!P) { box.hidden = true; return; }
+  const mn = new Date(P.mes + '-15T12:00:00').toLocaleDateString('es-CL', {month: 'long', year: 'numeric'}), T = P.tot;
+  box.hidden = false;
+  box.innerHTML = `<div class="card"><h2>📈 Proyección de ventas · ${esc(mn)}</h2><div class="cap">Estimado con los datos al ${esc(mqF(UBIC.snap.ts.slice(0, 10)))}: maquinaria según el ritmo real de cada equipo; licitaciones ponderadas por probabilidad</div>
+    <div class="mq-top" style="gap:18px;font-size:14px"><span>🚜 Maquinaria: <b>${clp(T.maq)}</b></span><span>📋 Licitaciones (ponderado): <b>${clp(T.lic)}</b></span><span>Σ Total ventas esperado: <b>${clp(T.maq + T.lic)}</b></span><span>💵 Cobros esperados (caja): <b>${clp(T.caja)}</b></span></div>
+    <div class="tblwrap"><table><thead><tr><th>Mandante</th><th>Equipo</th><th>Base del cálculo</th><th class="n">Producción</th><th class="n">Tarifa</th><th class="n">Venta estimada</th></tr></thead><tbody>
+    ${P.maq.map(x => `<tr><td>${esc(x.mand)}</td><td>${esc(x.eq)}</td><td>${esc(x.base)}</td><td class="n">${(Math.round(x.q * 100) / 100).toLocaleString('es-CL')} ${esc(x.u)}</td><td class="n">${clp(x.tar)}</td><td class="n">${clp(x.venta)}</td></tr>`).join('')}
+    ${P.lic.map(x => `<tr><td>${esc(x.mand || '')}</td><td>📋 ${esc(x.cod || '')} ${esc((x.proy || '').slice(0, 50))}</td><td>Licitación que podría iniciar: medio mes × ${Math.round(x.pr * 100)}%</td><td class="n">—</td><td class="n">${clp(x.mens)}/mes</td><td class="n">${clp(x.aporte)}</td></tr>`).join('')}
+    <tr style="font-weight:700"><td colspan="5">Total ventas esperado</td><td class="n">${clp(T.maq + T.lic)}</td></tr></tbody></table></div></div>`;
+}
 function renderUbic() {
+  try { renderProy(); } catch (e) {}
   const box = $('ubic'); if (!box) return;
   if (!UBIC || !UBIC.snap) { box.hidden = true; return; }
   box.hidden = false;
