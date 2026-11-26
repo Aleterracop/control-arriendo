@@ -2742,16 +2742,22 @@ function revisarDatos() {
   const grp = (arr, f) => arr.reduce((o, x) => { const k = f(x); if (k != null && k !== '') (o[k] = o[k] || []).push(x); return o; }, {});
   // registro comercial
   Object.entries(grp(L, l => l.codigo)).filter(([, a]) => a.length > 1).forEach(([c, a]) => add('cod:' + c, 'Código repetido en Gestión', c, a.map(l => `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 40)} · ${m$(totL(l))}`).join(' | '), {lic: a[0].id}));
-  Object.values(grp(L.filter(l => totL(l) > 0), l => normTxt(l.mandante || '').split(' ')[0] + '|' + totL(l))).filter(a => a.length > 1)
+  const perId = l => ((l.notas || '').match(/\[per:([^\]]+)\]/) || [])[1] || null;
+  // duplicado = mismo mandante, mismo monto y mismo servicio (las prórrogas de distintos períodos/máquinas no son duplicados)
+  Object.values(grp(L.filter(l => totL(l) > 0), l => normTxt(l.mandante || '').split(' ')[0] + '|' + totL(l) + '|' + (perId(l) ? 'per:' + perId(l) : normTxt(l.proyecto || '').slice(0, 60)))).filter(a => a.length > 1)
     .forEach(a => add('dup:' + a.map(l => l.id).sort().join(','), 'Posible oferta duplicada (mismo mandante y monto)', a.map(l => l.codigo || 's/código').join(', '), `${a[0].mandante || ''} · ${m$(totL(a[0]))} · ${a.map(l => (l.proyecto || '').slice(0, 35)).join(' | ')}`, {lic: a[0].id}));
   L.filter(l => l.estado === 'adjudicada' && (!l.fecha_adjudicacion || !totL(l))).forEach(l => add('adj:' + l.id, 'Adjudicada sin fecha o sin monto', l.codigo || 's/código', `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 50)}${!l.fecha_adjudicacion ? ' · SIN FECHA' : ''}${!totL(l) ? ' · SIN MONTO' : ''}`, {lic: l.id}));
   L.filter(l => l.monto_total != null && l.monto_adjudicado != null && +l.monto_total < +l.monto_adjudicado).forEach(l => add('tot:' + l.id, 'Total con prórrogas menor que el adjudicado', l.codigo || 's/código', `adjudicado ${m$(l.monto_adjudicado)} · total ${m$(l.monto_total)}`, {lic: l.id}));
   if (D.hasLinea) L.filter(l => (l.linea === 'maquinaria') !== !!l.es_arriendo).forEach(l => add('lin:' + l.id, 'Línea de negocio no calza con "es arriendo"', l.codigo || 's/código', `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 45)}`, {lic: l.id}));
   const prApp = L.filter(l => /\[per:/.test(l.notas || ''));
   Object.entries(grp(prApp, l => (l.notas.match(/\[per:([^\]]+)\]/) || [])[1])).filter(([, a]) => a.length > 1).forEach(([p, a]) => add('per2:' + p, 'Prórroga registrada dos veces como venta', a.map(l => l.codigo).join(', '), a.map(l => m$(totL(l))).join(' + '), {lic: a[1].id}));
-  L.filter(l => (l.origen || 'excel') === 'excel' && l.estado === 'adjudicada' && +l.monto_total > (+l.monto_adjudicado || 0) + 1).forEach(l => {
-    const pr = prApp.filter(p => normTxt(p.mandante || '').split(' ')[0] === normTxt(l.mandante || '').split(' ')[0]);
-    if (pr.length) add('xls:' + l.id + ':' + Math.round(+l.monto_total), 'Revisar: total del Excel incluye prórrogas y además hay prórrogas registradas en la app', l.codigo || 's/código', `${l.mandante || ''} · adjudicado ${m$(l.monto_adjudicado)} · total ${m$(l.monto_total)} · prórrogas app: ${pr.map(p => p.codigo + ' ' + m$(totL(p))).join(', ')}`, {lic: l.id});
+  // doble conteo de prórrogas: el total del Excel no debe incluir prórrogas que ya se registraron como venta desde la app
+  L.filter(l => (l.origen || 'excel') === 'excel' && l.estado === 'adjudicada' && l.codigo).forEach(l => {
+    const a = D.arriendos.find(x => String(x.cotizacion || '').split(/[\s_]/)[0] === String(l.codigo)); if (!a) return;   // sin arriendo enlazado no se puede comparar
+    const prs = calc(a).pers.filter(p => p.tipo === 'prorroga'), enApp = prs.filter(p => licDePeriodo(p)), fuera = prs.filter(p => !licDePeriodo(p));
+    if (!enApp.length) return;
+    const esperado = (+l.monto_adjudicado || 0) + fuera.reduce((t, p) => t + (+p.cantidad || 0) * (+p.tarifa || 0), 0), dif = totL(l) - esperado;
+    if (dif > 1000) add('xls:' + l.id + ':' + Math.round(totL(l)), 'Prórroga contada dos veces (total del Excel + registro de la app)', l.codigo, `${l.mandante || ''} · total ${m$(totL(l))}; debería ser ${m$(esperado)} (adjudicado + prórrogas no registradas en la app). Sobran ${m$(dif)}: corresponden a ${enApp.map(p => 'período ' + p.n).join(', ')}, ya registrado(s) aparte.`, {lic: l.id});
   });
   // arriendos
   D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => {
