@@ -2372,7 +2372,13 @@ const mesTxt = m => m ? `${MESES[+m.slice(5, 7) - 1]} ${m.slice(0, 4)}` : '';
 const montoAdj = l => +(l.monto_total || l.monto_adjudicado || l.monto_oferta || 0);
 const esPruebaLic = l => /prueba/i.test([l.proyecto, l.mandante, l.notas].join(' '));
 /* la cotización de la app se registra / actualiza sola en el registro comercial */
-async function syncLic(c) {
+const SYNC_COLA = {};
+function syncLic(c) {   // una sincronización a la vez por N° de cotización (dos guardados seguidos creaban registros duplicados)
+  if (!c || c.numero == null) return Promise.resolve();
+  const k = String(c.numero), prev = SYNC_COLA[k] || Promise.resolve();
+  const p = prev.catch(() => {}).then(() => syncLic1(c)); SYNC_COLA[k] = p; p.finally(() => { if (SYNC_COLA[k] === p) delete SYNC_COLA[k]; }); return p;
+}
+async function syncLic1(c) {
   if (D.sinLic || !c || esPruebaCot(c) || !['enviada', 'adjudicada', 'perdida'].includes(c.estado)) return;
   const t = totCot(c), est = {enviada: 'enviada', adjudicada: 'adjudicada', perdida: 'no_adjudicada'}[c.estado], m = byId('mandantes', c.mandante_id) || {};
   const exs = D.licitaciones.filter(l => String(l.codigo || '') === String(c.numero)), ex = exs.find(l => (l.origen || '') === 'app') || exs[0];
