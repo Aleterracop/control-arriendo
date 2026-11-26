@@ -1159,6 +1159,7 @@ function nextNumero() {
 
 const NOTA_DEF = v => `Los valores indicados son netos y no incluyen IVA.\nValidez de la oferta: ${v} días.`;
 
+const maqPropia = c => (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !(i.proveedor || i.costo_uf)).reduce((sum, i) => sum + (i.apu || []).filter(r => /^Equipo /i.test(r.c || '')).reduce((x, r) => x + (+r.q || 0) * (+r.p || 0), 0), 0);   // costo de máquinas propias (tarifa máquina) incluido en el costo
 /* ---------- Lista ---------- */
 let filtroCot = 'abiertas';
 function vCotizaciones() {
@@ -1178,8 +1179,9 @@ function vCotizaciones() {
     <select id="fC" style="width:auto"><option value="abiertas">Borradores y enviadas</option><option value="adjudicada">Adjudicadas</option><option value="perdida">Perdidas</option><option value="todas">Todas</option></select>
     <span class="sp"></span><button class="pri" id="nC">+ Nueva cotización</button>
   </div>
-  <div class="card tw"><table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Referencia</th><th class="n">Neto</th><th class="n hide-m">Utilidad</th><th>Estado</th></tr></thead><tbody>
-  ${L.map(c => { const t = totCot(c), tp = esPruebaCot(c); return `<tr class="click${tp ? ' prueba' : ''}" data-c="${c.id}"><td><b>${esc(nCot(c))}</b>${tp ? ' ' + chipPrueba : ''}</td><td>${fd(c.fecha)}</td><td>${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}</td><td class="small">${esc(c.referencia || '')}</td><td class="n">${clp(t.neto)}</td><td class="n hide-m small">${t.costo ? clp(t.util) + ' (' + nf(t.margen * 100) + '%)' : '<span class="muted">sin costo</span>'}</td><td>${estCot(c.estado)}${c.estado === 'adjudicada' && (!c.arriendo_id || !byId('arriendos', c.arriendo_id)) ? ' <span class="chip c-red" title="Adjudicada pero sin arriendo enlazado">⚠ sin arriendo</span>' : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No hay cotizaciones en esta vista.</td></tr>'}
+  <div class="card tw"><table><thead><tr><th>N°</th><th>Fecha</th><th>Cliente</th><th>Referencia</th><th class="n">Neto</th><th class="n hide-m" title="Con equipos propios: margen directo (venta menos lo que realmente se paga)">Utilidad / margen</th><th>Estado</th></tr></thead><tbody>
+  ${L.map(c => { const t = totCot(c), tp = esPruebaCot(c); return `<tr class="click${tp ? ' prueba' : ''}" data-c="${c.id}"><td><b>${esc(nCot(c))}</b>${tp ? ' ' + chipPrueba : ''}</td><td>${fd(c.fecha)}</td><td>${esc(c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '')}</td><td class="small">${esc(c.referencia || '')}</td><td class="n">${clp(t.neto)}</td><td class="n hide-m small">${(() => { if (!t.costo) return '<span class="muted">sin costo</span>'; const mp = maqPropia(c);
+    return mp ? `<b title="Venta menos lo que realmente se paga (sin descontar la máquina propia)">${clp(t.util + mp)} (${nf((t.util + mp) / (t.neto || 1) * 100)}%)</b><div class="muted" style="font-size:11px">margen directo · sobre tarifa máq. ${clp(t.util)}</div>` : clp(t.util) + ' (' + nf(t.margen * 100) + '%)'; })()}</td><td>${estCot(c.estado)}${c.estado === 'adjudicada' && (!c.arriendo_id || !byId('arriendos', c.arriendo_id)) ? ' <span class="chip c-red" title="Adjudicada pero sin arriendo enlazado">⚠ sin arriendo</span>' : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No hay cotizaciones en esta vista.</td></tr>'}
   </tbody></table></div>`;
   $('fC').value = filtroCot;
   $('fC').onchange = e => { filtroCot = e.target.value; vCotizaciones(); };
@@ -1351,7 +1353,7 @@ function updTot() {
     if (u) u.innerHTML = it.costo != null && it.costo !== '' && tt ? `${clp(tt - (+it.cantidad || 0) * (+it.costo || 0))}<div class="muted">${nf((1 - (+it.costo || 0) / (+it.precio || 1)) * 100)}% s/precio</div>` : '<span class="muted">—</span>';
   });
   const b = document.getElementById('cTot'); if (!b) return;
-  const maqP = (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !(i.proveedor || i.costo_uf)).reduce((sum, i) => sum + (i.apu || []).filter(r => /^Equipo /i.test(r.c || '')).reduce((x, r) => x + (+r.q || 0) * (+r.p || 0), 0), 0);
+  const maqP = maqPropia(c);
   b.innerHTML = `<div class="kpis" style="margin:0">
     <div class="kpi"><div class="l">Total neto</div><div class="v">${clp(t.neto)}</div></div>
     <div class="kpi"><div class="l">IVA ${nf(P('iva', 0.19) * 100)}%</div><div class="v">${clp(t.iva)}</div></div>
