@@ -2375,9 +2375,10 @@ const esPruebaLic = l => /prueba/i.test([l.proyecto, l.mandante, l.notas].join('
 async function syncLic(c) {
   if (D.sinLic || !c || esPruebaCot(c) || !['enviada', 'adjudicada', 'perdida'].includes(c.estado)) return;
   const t = totCot(c), est = {enviada: 'enviada', adjudicada: 'adjudicada', perdida: 'no_adjudicada'}[c.estado], m = byId('mandantes', c.mandante_id) || {};
-  const ex = D.licitaciones.find(l => String(l.codigo || '') === String(c.numero));
+  const exs = D.licitaciones.filter(l => String(l.codigo || '') === String(c.numero)), ex = exs.find(l => (l.origen || '') === 'app') || exs[0];
   const arr = (c.items || []).some(i => i.tipo === 'i' && i.equipo_tipo_id);
   const o = {estado: est, monto_oferta: t.neto || null, fecha_envio: c.fecha_envio || (ex && ex.fecha_envio) || c.fecha, actualizado: new Date().toISOString()};
+  if (ex && (ex.origen || 'app') === 'app' && c.referencia) o.proyecto = c.referencia;   // la referencia de la cotización se mantiene al día en Gestión
   if (est === 'adjudicada') { o.fecha_adjudicacion = (ex && ex.fecha_adjudicacion) || c.fecha_adjudicacion || todayISO();
     const sinTocar = v => !ex || !+v || Math.abs(+v - (+ex.monto_oferta || 0)) < 1;   // el monto lo puso la app (= la oferta anterior): se actualiza; si se editó a mano, se respeta
     if (sinTocar(ex && ex.monto_adjudicado)) o.monto_adjudicado = t.neto || null; if (sinTocar(ex && ex.monto_total)) o.monto_total = t.neto || null; }
@@ -2385,7 +2386,8 @@ async function syncLic(c) {
   try {
     if (ex) { const r = await upd('licitaciones', ex.id, o); Object.assign(ex, r || o); }
     else { const r = await ins('licitaciones', {...o, codigo: String(c.numero), mandante: m.nombre || c.cliente || null, proyecto: c.referencia || null, tipo_servicio: arr ? 'Arriendo de maquinaria' : 'Servicio', unidad: 'Terracop', responsable: 'Alejandro Osorio', es_arriendo: arr, fecha_inicio: c.fecha, origen: 'app', ...(D.hasLinea ? {linea: arr ? 'maquinaria' : 'servicio'} : {})}); if (r) D.licitaciones.push(r); }
-  } catch (e) { if (e.message === 'SESSION') throw e; console.warn('syncLic', e); }
+    if (exs.length > 1) toast(`⚠️ Hay ${exs.length} registros con el código ${c.numero} en Gestión: revise "🔍 Revisar datos".`);
+  } catch (e) { if (e.message === 'SESSION') throw e; console.warn('syncLic', e); alert('La cotización se guardó, pero no se pudo actualizar su registro en Gestión:\n' + e.message + '\n\nVuelva a presionar Guardar, o corrija el registro en Gestión.'); }
 }
 let GF = {per: 'mes', un: '', resp: '', tipo: '', est: 'abiertas', q: ''};
 const LINEAS = [['maquinaria', '🚜 Arriendo de maquinaria'], ['servicio', '🔧 Servicios (cotizaciones rápidas)'], ['licitacion', '📋 Licitaciones']];
