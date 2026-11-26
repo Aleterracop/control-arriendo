@@ -429,13 +429,14 @@ function vInicio() {
     <div class="kpi"><div class="l">Vendido con OC</div><div class="v">${clp(vOC)}</div></div>
     <div class="kpi o"><div class="l">Adjudicado sin OC</div><div class="v">${clp(vPal)}</div></div>
     <div class="kpi g"><div class="l">Enviado en EDP</div><div class="v">${clp(env)}</div></div>
-    <div class="kpi"><div class="l">EDP por enviar</div><div class="v">${clp(pendEnv)}</div></div>
-    <div class="kpi r"><div class="l">HES pendientes</div><div class="v">${hesP}</div></div>
+    <div class="kpi" data-pend="env" style="cursor:pointer" title="Ver detalle"><div class="l">EDP por enviar</div><div class="v">${clp(pendEnv)}</div><div class="small muted">Ver detalle ›</div></div>
+    <div class="kpi r" data-pend="hes" style="cursor:pointer" title="Ver detalle"><div class="l">HES pendientes</div><div class="v">${hesP}</div><div class="small muted">Ver detalle ›</div></div>
     <div class="kpi"><div class="l">Arriendos activos</div><div class="v">${enFaena}</div></div>
   </div>
   <div class="card"><div class="row"><h2 style="margin:0">Qué hacer hoy</h2><span class="sp"></span><span class="muted small">${L.length} aviso(s) · ${fd(todayISO())}</span></div>
   <div style="margin-top:10px">${L.length ? L.map(x => `<div class="al ${x.lv}"><div class="ic">${x.ic}</div><div class="tx">${x.t}</div></div>`).join('') : '<div class="msg ok">Todo al día. No hay avisos.</div>'}</div></div>`;
   $('hNuevo').onclick = () => formArriendo();
+  document.querySelectorAll('[data-pend]').forEach(k => k.onclick = () => verPendientes(k.dataset.pend));
   document.querySelectorAll('[data-sinarr]').forEach(b => b.onclick = e => { e.preventDefault(); const c = byId('cotizaciones', b.dataset.sinarr); if (!c || !confirm(`¿La cotización ${nCot(c)} es un servicio que no lleva arriendo de máquina?\n\nSe quita este aviso. La venta sigue contando en Gestión.`)) return;
     guardar(() => upd('cotizaciones', c.id, {notas: ((c.notas || '') + ' [sin_arriendo]').trim()}), 'Aviso quitado'); });
 }
@@ -449,6 +450,7 @@ function vArriendos() {
   $('view').innerHTML = `
   <div class="row" style="margin-bottom:12px">
     <select id="fA" style="width:auto"><option value="activos">Activos</option><option value="terminados">Terminados / cerrados</option><option value="todos">Todos</option></select>
+    ${(() => { const P2 = listaPendientes(), tE = P2.env.reduce((t, r) => t + r.monto, 0); return `<button data-pend="env" title="Ver EDP por enviar">📨 EDP por enviar: <b>${P2.env.length}</b>${tE ? ' · ' + clp(tE) : ''}</button><button data-pend="hes" title="Ver HES pendientes" ${P2.hes.length ? 'style="border-color:#e0a020"' : ''}>🧾 HES pendientes: <b>${P2.hes.length}</b></button>`; })()}
     <span class="sp"></span><button class="pri" id="nuevoA">+ Nuevo arriendo / servicio</button>
   </div>
   ${(() => {   // agrupados por mandante (y por área dentro de cada mandante)
@@ -479,6 +481,7 @@ function vArriendos() {
   $('fA').onchange = e => { filtroArr = e.target.value; vArriendos(); };
   $('nuevoA').onclick = () => formArriendo();
   document.querySelectorAll('.ac').forEach(el => el.onclick = () => { location.hash = 'a-' + el.dataset.id; });
+  document.querySelectorAll('[data-pend]').forEach(k => k.onclick = () => verPendientes(k.dataset.pend));
   document.querySelectorAll('[data-plg]').forEach(h => h.onclick = () => { let plg = {}; try { plg = JSON.parse(localStorage.getItem('arr_plegados') || '{}'); } catch (e) {}
     if (plg[h.dataset.plg]) delete plg[h.dataset.plg]; else plg[h.dataset.plg] = 1; try { localStorage.setItem('arr_plegados', JSON.stringify(plg)); } catch (e) {} vArriendos(); });
 }
@@ -2450,7 +2453,7 @@ document.addEventListener('click', e => {
   if (e.target.closest('#calc')) return;
   if (calcModo) { const inp = e.target.closest('#view input, #mbox input'); if (inp && inp.type !== 'checkbox' && inp.type !== 'file') { const i = inputInfo(inp); if (i) { e.preventDefault(); inp.blur(); addCalc(i, e.shiftKey ? '−' : null); return; } } }
   const el = e.target.closest(CSEL); if (!el || el.querySelector('input,button') || e.target.closest('a,button,input,select')) return;
-  if (el.closest('[data-gk]')) return;   // KPI de Gestión: abre el detalle
+  if (el.closest('[data-gk],[data-pend]')) return;   // KPI con detalle: abre el detalle
   const i = celInfo(el); if (!i) { if (el.matches('td.n')) e.stopPropagation(); return; }
   e.stopPropagation(); addCalc(i, e.shiftKey ? '−' : null);   // pinchar un monto solo lo suma; no abre la fila
 }, true);
@@ -2592,6 +2595,28 @@ function mapaAnimar(root) {   // las máquinas parten en el inicio y avanzan has
 }
 
 document.head.insertAdjacentHTML('beforeend', `<style>${MQ_CSS}</style>`);
+
+/* ---------- EDP por enviar y HES pendientes (detalle) ---------- */
+function listaPendientes() {
+  const hoy = todayISO(), env = [], hes = [];
+  D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => { const c = calc(a), m = mandante(a);
+    c.edps.forEach(e => { const r = {a, e, mand: m.nombre || '', monto: c.monto(e)};
+      if (e.estado === 'borrador') env.push(r);
+      else if (a.requiere_hes && e.hes_estado !== 'recibida' && e.hes_estado !== 'no_aplica') hes.push({...r, dias: e.fecha_envio ? days(e.fecha_envio, hoy) : null}); }); });
+  return {env: env.sort((x, y) => (x.e.desde || '').localeCompare(y.e.desde || '')), hes: hes.sort((x, y) => (y.dias || 0) - (x.dias || 0))};
+}
+function verPendientes(tipo) {
+  const {env, hes} = listaPendientes(), esH = tipo === 'hes', rows = esH ? hes : env, tot = rows.reduce((t, r) => t + r.monto, 0);
+  const estH = r => r.e.hes_estado === 'solicitada' ? '<span class="chip c-blue">Aprobado · HES en emisión</span>' : '<span class="chip c-orange">Esperando aprobación</span>';
+  modal(`<div class="row"><h3 style="margin:0">${esH ? '🧾 HES pendientes' : '📨 EDP por enviar al mandante'}</h3><span class="sp"></span><button id="pdX">Cerrar</button></div>
+    <div class="small muted" style="margin:4px 0 10px">${esH ? 'EDP ya enviados que todavía no tienen N° de HES. Pida la HES al emisor de la OC/SolPed.' : 'EDP creados que aún no se envían al mandante.'} Pinche una fila para abrir el arriendo · pinche los montos para sumarlos.</div>
+    ${rows.length ? `<div class="tw"><table><thead><tr><th>Equipo / servicio</th><th>Mandante</th><th>EDP</th><th>Período</th><th>OC / SolPed</th>${esH ? '<th>Enviado</th><th class="n">Días</th><th>Estado</th>' : ''}<th class="n">Monto neto</th></tr></thead><tbody>
+      ${rows.map(r => `<tr data-pda="${r.a.id}" style="cursor:pointer"><td><b>${esc(r.a.descripcion)}</b></td><td>${esc(r.mand)}</td><td>N° ${r.e.n}</td><td>${fd(r.e.desde)}${r.e.hasta ? ' al ' + fd(r.e.hasta) : ''}</td><td>${esc(r.e.oc || r.a.oc || '—')}</td>
+        ${esH ? `<td>${fd(r.e.fecha_envio)}</td><td class="n" style="${r.dias > 10 ? 'color:var(--red);font-weight:700' : ''}">${r.dias ?? '—'}</td><td>${estH(r)}</td>` : ''}<td class="n">${clp(r.monto)}</td></tr>`).join('')}
+      <tr style="font-weight:700;background:#f1f5fb"><td colspan="${esH ? 8 : 5}">Total (${rows.length})</td><td class="n">${clp(tot)}</td></tr></tbody></table></div>` : `<div class="msg ok">✓ No hay ${esH ? 'HES pendientes' : 'EDP por enviar'}.</div>`}`);
+  $('mbox').classList.add('wide'); $('pdX').onclick = closeModal;
+  document.querySelectorAll('[data-pda]').forEach(tr => tr.onclick = () => { closeModal(); location.hash = 'a-' + tr.dataset.pda; });
+}
 /* ---------------- Ubicación de maquinaria en arriendo ---------------- */
 function snapUbic() {
   const hoy = todayISO();
