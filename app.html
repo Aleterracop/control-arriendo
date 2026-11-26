@@ -1973,9 +1973,22 @@ function textosBase(c, S, minera) {
     al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de ${eqTxt}${ops}, por un periodo de ${V('dias')} días${cont}, ${turno}${minimo}.`);
     al.push(`Se consideran como parte de nuestra oferta los siguientes equipos:<ol>${S.lista.map(g => `<li>${capi(nombreEquipos(g.nombre, g.n))}${S.opMix ? (g.op ? ' con operador' : ' sin operador') : ''}.</li>`).join('') || '<li>…</li>'}</ol>`);
   }
-  if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día (sin sistema supresor de incendio automático o semiautomático).</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
+  const tieneAnsul = (c.items || []).some(i => i.adic === 'ansul') || ((c.compartidos || {}).rows || []).some(r => r.adic === 'ansul');
+  if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día${tieneAnsul ? '' : ' (sin sistema supresor de incendio automático o semiautomático)'}.</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
-  if (mantIncluida(c)) al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
+  const AD = {}, eqIt = (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !/moviliz/i.test(i.desc || ''));
+  (c.items || []).filter(i => i.adic).forEach(i => { const a = AD[i.adic] = AD[i.adic] || {para: new Set(), n: i.desc}; (i.adic_para || eqIt.map(e => e.item)).forEach(x => a.para.add(x)); });
+  ((c.compartidos || {}).rows || []).filter(r => r.adic).forEach(r => { const a = AD[r.adic] = AD[r.adic] || {para: new Set(), n: r.c}; (r.para || eqIt.map(e => e.item)).forEach(x => a.para.add(x)); });
+  const lista = set => { const its = eqIt.filter(e => set.has(e.item)); if (its.length && its.length === eqIt.length && eqIt.length > 1) return 'todos los equipos';
+    const ns = its.map(e => nombreEquipos((byId('equipo_tipos', e.equipo_tipo_id) || {}).nombre || 'equipo', 1).replace(/^(un|una) /i, m => m.toLowerCase() === 'un ' ? 'el ' : 'la ').replace(/\s+o similar$/i, '')); return ns.length > 1 ? ns.slice(0, -1).join(', ') + ' y ' + ns.slice(-1) : ns[0] || 'los equipos'; };
+  const mantPropia = AD.mec250 || AD.ins250;
+  if (AD.mec250) al.push('Se considera la mantención preventiva cada 250 horas máquina realizada por el equipo de mantenimiento de Terracop en faena, incluidos el mecánico y su traslado en vehículo de apoyo.');
+  if (AD.ins250 && !AD.mec250) al.push('Se consideran los insumos de la mantención preventiva cada 250 horas máquina (filtros, aceites y lubricantes), por cuenta de Terracop. La mano de obra de la mantención será realizada por los mecánicos del mandante.');
+  if (AD.ansul) al.push(`Se considera sistema de supresión de incendios ANSUL en ${lista(AD.ansul.para)}.`);
+  if (AD.fatiga_inst || AD.fatiga_mes) { const st = new Set([...(AD.fatiga_inst ? AD.fatiga_inst.para : []), ...(AD.fatiga_mes ? AD.fatiga_mes.para : [])]);
+    al.push(`Se considera sistema de detección de fatiga y somnolencia en ${lista(st)}${AD.fatiga_inst ? ', incluida su instalación' : ''}${AD.fatiga_mes ? (AD.fatiga_inst ? ' y su arriendo mensual' : ', con su arriendo mensual') + ' durante el periodo del servicio' : ''}.`); }
+  Object.entries(AD).filter(([k]) => !['mec250', 'ins250', 'ansul', 'fatiga_inst', 'fatiga_mes'].includes(k)).forEach(([, a]) => al.push(`Se considera ${String(a.n || '').replace(/\s*\(incluido\).*$/, '').replace(/\s+–.*$/, '').replace(/^./, m => m.toLowerCase())} en ${lista(a.para)}.`));
+  if (mantPropia) ; else if (mantIncluida(c)) al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
   else al.push(`La mantención preventiva cada 250 horas máquina será realizada por el equipo de mantenimiento de Terracop en faena. Su costo, que considera el mecánico y su traslado de ida y vuelta a faena en vehículo de apoyo, será de cargo del mandante, con un valor de ${clp(P('mantencion_250', 1500000))} + IVA por cada mantención.`);
   if (S.op && S.al === 'alim') al.push('Se considera la alimentación de los operadores durante la jornada, por cuenta de Terracop. No se considera alojamiento: los operadores se trasladan diariamente desde su lugar de residencia.');
   if (S.op && S.alim === 'terracop' && S.aj === 'mandante') al.push('Se considera la alimentación de los operadores, por cuenta de Terracop.');
@@ -2224,14 +2237,81 @@ async function docxDesdeHTML(root) {
 /* ---------- Costos compartidos: se reparten (prorratean) en el costo de los equipos ---------- */
 const CC_RAPIDOS = [['Supervisor', 'mes', 1, 'supervisor'], ['Prevencionista de riesgos', 'mes', 1, 'prevencion'], ['Vehículo de apoyo 4x4 · traslado de personal (propio)', 'día', 30, 'camioneta'], ['Vehículo de apoyo 4x4 · traslado de personal (arrendado)', 'mes', 1, 'cam_arr'], ['Combustible vehículo de apoyo', 'litro', 600, 'diesel'], ['Container / campamento', 'mes', 1, 'container'], ['Radio portátil / base', 'mes', 1, 'radio'], ['Internet satelital Starlink', 'mes', 1, 'starlink'], ['Oxígeno / equipo de emergencia altura', 'mes', 1, 'oxigeno'], ['Instalación de faena', 'gl', 1, 'faena'], ['Baño químico', 'mes', 1, 'bano'], ['Conductor vehículo de apoyo', 'mes', 1, 'chofer'], ['Exámenes ocupacionales / altura geográfica', 'persona', 1, 'examenes'], ['Pasajes y traslados de personal', 'viaje', 1, 'pasajes'], ['Mantención 250 h en faena (mecánico + vehículo + traslado)', 'mantención', 1, 'mant250']];
 const hrsItem = it => { const q = +it.cantidad || 0, m = it.meta || {}; return it.unidad === 'hm' ? q : it.unidad === 'mes' ? q * P('horas_mes', 180) : it.unidad === 'día' ? q * (m.hd || P('horas_mes', 180) / 30) : q; };
+/* ---------- Adicionales del arriendo (ANSUL, fatiga y somnolencia, insumos de mantención…) ---------- */
+const ADIC_BASE = [
+  {id: 'ansul', nombre: 'Sistema de supresión de incendios ANSUL', unidad: 'equipo', precio: 2895000, base: 'equipo', nota: 'Solo para clientes que lo exigen'},
+  {id: 'fatiga_inst', nombre: 'Sistema de detección de fatiga y somnolencia – instalación', unidad: 'equipo', precio: 0, base: 'equipo', solo: 'camiones', nota: 'Valor de la instalación: escríbalo a mano · para camiones'},
+  {id: 'fatiga_mes', nombre: 'Sistema de detección de fatiga y somnolencia – arriendo mensual', unidad: 'mes', precio_uf: 1, base: 'mes', solo: 'camiones', nota: '1 UF mensual por equipo · para camiones'},
+  {id: 'ins250', nombre: 'Insumos de mantención 250 h (filtros, aceites y lubricantes)', unidad: 'mantención', precio: 0, base: 'mantencion', nota: 'Cuando el mandante usa sus propios mecánicos'},
+  {id: 'mec250', nombre: 'Mantención 250 h con mecánico de Terracop (mano de obra, traslado y vehículo 4x4)', unidad: 'mantención', precio: null, base: 'mantencion', nota: 'Valor del parámetro mantencion_250'}];
+function adicCatalogo() { let L = null; try { L = JSON.parse(AJ('adicionales') || 'null'); } catch (e) {}
+  L = Array.isArray(L) ? L : ADIC_BASE.map(x => ({...x}));
+  const iF = L.findIndex(x => x.id === 'fatiga'); if (iF >= 0) L.splice(iF, 1, ...ADIC_BASE.filter(x => x.id.startsWith('fatiga_')).map(x => ({...x})));   // versión anterior: una sola línea de fatiga
+  L.forEach(x => { if (/^fatiga/.test(x.id) && !x.solo) x.solo = 'camiones';
+    if (x.id === 'mec250' && x.precio == null) x.precio = P('mantencion_250', 1500000); if (x.precio_uf) x.precio = Math.round(x.precio_uf * P('uf', 40000)); }); return L; }
+const mesesItem = it => { const m = it.meta || {}; if (m.plazo) return m.plazo_u === 'día' ? m.plazo / 30 : +m.plazo;
+  return it.unidad === 'mes' ? +it.cantidad : it.unidad === 'día' ? +it.cantidad / (m.turno === '5x2' ? 22 : 30) : hrsItem(it) / P('horas_mes', 180); };
+async function adicGuardar(L) { await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave: 'adicionales', valor: JSON.stringify(L)})}); D.ajustesMap.adicionales = JSON.stringify(L); }
+function formAdicionales() {
+  const c = COT, eqs = (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !/moviliz/i.test(i.desc || ''));
+  if (!eqs.length) return alert('Primero agregue los equipos a la cotización (con el asistente 🧮). Los adicionales se asignan a cada equipo.');
+  const L = adicCatalogo(), nMant = it => Math.max(1, Math.floor(hrsItem(it) / 250)), nEq = it => (it.meta && +it.meta.equipos) || 1, nMes = it => Math.max(1, Math.ceil(mesesItem(it) - 0.01));
+  const eqNom = it => `${it.item} · ${(it.equipo_tipo_id && (byId('equipo_tipos', it.equipo_tipo_id) || {}).nombre) || it.desc}`.slice(0, 60);
+  modal(`<div class="row"><h3 style="margin:0">➕ Adicionales del arriendo</h3><span class="sp"></span><button id="adX">Cerrar</button></div>
+    <div class="small muted" style="margin:4px 0 10px">Marque los adicionales que pide el cliente, elija a qué equipos aplican y cómo se cobran: <b>visible</b> (sale como ítem en la oferta) o <b>incluido</b> (se reparte dentro del precio del equipo y no se ve). Los precios se guardan en el catálogo para las próximas cotizaciones. Si no tiene el valor, escríbalo a mano.</div>
+    <div class="tw"><table><thead><tr><th style="width:28px"></th><th>Adicional</th><th>Equipos</th><th class="n" style="width:120px">Valor unitario $</th><th style="width:170px">Cómo se cobra</th></tr></thead><tbody>
+    ${L.map((x, k) => `<tr><td><input type="checkbox" data-adu="${k}" style="width:auto"></td><td><input data-adn="${k}" value="${esc(x.nombre)}"><div class="small muted">por ${esc(x.unidad)}${x.base === 'mantencion' ? ' · cantidad = horas del equipo ÷ 250' : x.base === 'mes' ? ' · cantidad = meses del arriendo' : ''}${x.precio_uf ? ` · ${nf(x.precio_uf, 2)} UF = ${clp(x.precio)} (UF ${clp(P('uf', 40000))})` : ''}${x.nota ? ' · ' + esc(x.nota) : ''}</div></td>
+      <td class="small">${eqs.map((it, j) => `<label class="row" style="gap:4px;margin:0"><input type="checkbox" data-ade="${k}:${j}" ${x.solo === 'camiones' && !['camion', 'aljibe', 'camioneta', 'grua'].includes(mqFam(eqNom(it))) ? '' : 'checked'} style="width:auto"> ${esc(eqNom(it))}${x.base === 'mantencion' ? ` <span class="muted">(${nMant(it)} mant.)</span>` : x.base === 'mes' ? ` <span class="muted">(${nMes(it)} mes${nMes(it) === 1 ? '' : 'es'})</span>` : nEq(it) > 1 ? ` <span class="muted">(${nEq(it)} eq.)</span>` : ''}</label>`).join('')}</td>
+      <td class="n"><input data-adp="${k}" inputmode="numeric" value="${x.precio || ''}" placeholder="escriba el valor" style="text-align:right"></td>
+      <td><select data-adm="${k}"><option value="vis">Visible: ítem en la oferta</option><option value="inc">Incluido en el precio (no se ve)</option></select></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="row" style="gap:6px;margin-top:8px"><button class="sm" id="adNew">＋ Nuevo adicional al catálogo</button><span class="sp"></span><button id="adSave">💾 Guardar precios en el catálogo</button><button class="pri" id="adOk">Agregar a la cotización</button></div>`);
+  $('mbox').classList.add('wide'); $('adX').onclick = closeModal;
+  const valSel = s => { const e = document.querySelector(s); return e ? e.value : ''; };
+  const sync = () => L.forEach((x, k) => { x.nombre = valSel(`[data-adn="${k}"]`).trim() || x.nombre; const p = num(valSel(`[data-adp="${k}"]`)); x.precio = p || 0; });
+  $('adSave').onclick = async () => { sync(); try { await adicGuardar(L); toast('Catálogo de adicionales guardado'); } catch (e) { alert(e.message); } };
+  $('adNew').onclick = async () => { const n = prompt('Nombre del adicional (ej. Cámara de retroceso, GPS, Kit antiderrame):'); if (!n) return;
+    const u = (prompt('¿Se cobra por equipo, por mantención o global? Escriba: equipo / mantencion / global', 'equipo') || 'equipo').toLowerCase().trim();
+    sync(); L.push({id: 'a' + Date.now(), nombre: n.trim(), unidad: u.startsWith('mant') ? 'mantención' : u.startsWith('glob') ? 'gl' : 'equipo', base: u.startsWith('mant') ? 'mantencion' : u.startsWith('glob') ? 'global' : 'equipo', precio: 0});
+    try { await adicGuardar(L); } catch (e) { return alert(e.message); } formAdicionales(); };
+  $('adOk').onclick = async () => {
+    sync(); let n = 0, falta = [];
+    L.forEach((x, k) => { if (!document.querySelector(`[data-adu="${k}"]`).checked) return;
+      const sel = eqs.filter((it, j) => document.querySelector(`[data-ade="${k}:${j}"]`).checked); if (!sel.length) return;
+      if (!x.precio) falta.push(x.nombre);
+      const qDe = it => (x.base === 'mantencion' ? nMant(it) : x.base === 'mes' ? nMes(it) : 1) * nEq(it), q = x.base === 'global' ? 1 : sel.reduce((t, it) => t + qDe(it), 0);
+      const modo = valSel(`[data-adm="${k}"]`), para = sel.map(it => it.item), quien = sel.length === eqs.length ? '' : ' – ' + sel.map(it => ((byId('equipo_tipos', it.equipo_tipo_id) || {}).nombre || it.item).toLowerCase()).join(', ');
+      if (modo === 'vis') {
+        let g = c.items.find(i => i.tipo === 'g' && /^adicionales/i.test(i.desc || ''));
+        if (!g) { const iMov = c.items.findIndex(i => i.tipo === 'g' && /moviliz/i.test(i.desc || '')); g = {tipo: 'g', item: '', desc: 'Adicionales del arriendo'}; if (iMov >= 0) c.items.splice(iMov, 0, g); else c.items.push(g);
+          let k = 0; c.items.forEach(i => { if (i.tipo === 'g') { const nueva = String.fromCharCode(65 + k++), vieja = i.item; i.item = nueva; if (vieja && vieja !== nueva) c.items.forEach(j => { if (j.tipo === 'i' && String(j.item).startsWith(vieja + '.') && !j._re) { j.item = nueva + String(j.item).slice(vieja.length); j._re = 1; } }); } }); c.items.forEach(j => delete j._re); }
+        let pos = g ? c.items.indexOf(g) + 1 : c.items.length; if (g) while (pos < c.items.length && c.items[pos].tipo === 'i') pos++;
+        const nn = c.items.filter(i => i.tipo === 'i' && g && String(i.item).startsWith(g.item + '.')).length;
+        c.items.splice(pos, 0, {tipo: 'i', item: g ? `${g.item}.${nn + 1}` : String(c.items.length + 1), desc: x.nombre + quien, unidad: x.unidad, cantidad: q, precio: x.precio || null, costo: x.precio || null, adic: x.id, adic_para: para});
+      } else {
+        c.compartidos = c.compartidos || {rows: [], modo: 'horas'}; c.compartidos.rows = c.compartidos.rows || [];
+        if (x.base === 'global') c.compartidos.rows.push({c: x.nombre + ' (incluido)', u: x.unidad, q: 1, p: x.precio || null, para, adic: x.id});
+        else sel.forEach(it => c.compartidos.rows.push({c: `${x.nombre} (incluido) – ${it.item}`, u: x.unidad, q: qDe(it), p: x.precio || null, para: [it.item], adic: x.id}));   // cada equipo carga lo suyo
+      }
+      n++; });
+    if (!n) return alert('Marque al menos un adicional y un equipo.');
+    try { await adicGuardar(L); } catch (e) {}
+    closeModal(); if ($('ccBox')) { $('ccBox').innerHTML = compartidosHTML(c); bindCompartidos(); } renderItems();
+    toast(`${n} adicional(es) agregado(s) · recuerde Guardar`); if (falta.length) alert('Falta el valor de: ' + falta.join(', ') + '.\n\nEscríbalo en la tabla de ítems (si es visible) o en Costos compartidos (si va incluido).');
+  };
+}
 function aplicarCompartidos(c) {   // recalcula la parte de cada equipo y la deja en su costo (y en su 🧮)
   const cc = c.compartidos || {rows: []}, rows = cc.rows || [], total = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0);
   const items = (c.items || []).filter(i => i.tipo === 'i'), elegibles = items.filter(i => i.equipo_tipo_id && !/moviliz/i.test(i.desc || ''));
   const dest = (elegibles.length ? elegibles : items.filter(i => !i.oculto && !/moviliz/i.test(i.desc || '')));
   const peso = it => cc.modo === 'horas' ? hrsItem(it) : cc.modo === 'monto' ? (+it.precio || 0) * (+it.cantidad || 0) : 1;
-  const sumP = dest.reduce((s, it) => s + peso(it), 0) || 1;
+  const sumP = dest.reduce((s, it) => s + peso(it), 0) || 1, shareMap = new Map();
+  rows.forEach(r => { const tot = (+r.q || 0) * (+r.p || 0); if (!tot) return;   // cada fila se reparte entre todos los equipos o solo entre los indicados (r.para)
+    const dd = r.para && r.para.length ? dest.filter(it => r.para.includes(it.item)) : dest; if (!dd.length) return;
+    const sp = dd.reduce((s, it) => s + peso(it), 0);
+    dd.forEach(it => shareMap.set(it, (shareMap.get(it) || 0) + (sp ? tot * peso(it) / sp : tot / dd.length))); });
   items.forEach(it => {
-    const share = dest.includes(it) && total ? Math.round(total * peso(it) / sumP) : 0, cant = +it.cantidad || 0;
+    const share = Math.round(shareMap.get(it) || 0), cant = +it.cantidad || 0;
     if (it.apu && it.apu.length) {
       it.apu = it.apu.filter(r => !r.cc); if (share) it.apu.push({c: 'Costos compartidos (prorrateo: ' + rows.map(r => r.c).join(', ').slice(0, 80) + ')', u: 'gl', q: 1, p: share, cc: true});
       const t = it.apu.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0); it.costo = cant ? Math.round(t / cant) : it.costo;
@@ -2248,9 +2328,11 @@ function compartidosHTML(c) {
   if (!D.hasCC) return `<div class="card"><h2 style="margin:0 0 4px">🧩 Costos compartidos</h2><div class="msg err small">Para usar esta sección ejecute <b>sql/15_costos_compartidos.sql</b> en Supabase.</div></div>`;
   return `<div class="card"><div class="row"><h2 style="margin:0">🧩 Costos compartidos</h2><span class="sp"></span><label class="row small" style="margin:0;gap:4px">Repartir <select id="ccMo" style="width:auto"><option value="horas" ${cc.modo !== 'iguales' && cc.modo !== 'monto' ? 'selected' : ''}>según horas de cada equipo</option><option value="iguales" ${cc.modo === 'iguales' ? 'selected' : ''}>en partes iguales</option><option value="monto" ${cc.modo === 'monto' ? 'selected' : ''}>según monto de cada ítem</option></select></label></div>
     <div class="small muted" style="margin:4px 0 8px">Supervisor, prevencionista, vehículo de apoyo para el personal, radio, Starlink, oxígeno, container, instalación de faena… (el transporte de la maquinaria va en el ítem Movilización / desmovilización). <b>No salen como ítem en la oferta</b>: se reparten solos en el costo de los equipos y suben su precio sugerido. Agregue rápido:</div>
-    <div class="row" style="gap:5px;margin-bottom:8px">${CC_RAPIDOS.map((x, k) => `<button class="sm" data-ccq="${k}">＋ ${esc(x[0])}</button>`).join('')}<button class="sm" data-ccq="-1">＋ Otro</button><select id="ccPer" style="width:auto;font-size:12px;padding:3px 6px"><option value="">＋ Personal del catálogo…</option>${D.personal.map(p => `<option value="${p.id}">${esc(p.cargo)}${+p.valor_hh ? ' · ' + clp(p.valor_hh * P('horas_mes', 180)) + '/mes' : ''}</option>`).join('')}</select></div>
+    <div class="row" style="gap:5px;margin-bottom:8px">${CC_RAPIDOS.map((x, k) => `<button class="sm" data-ccq="${k}">＋ ${esc(x[0])}</button>`).join('')}<button class="sm" data-ccq="-1">＋ Otro</button><button class="sm" id="ccAdic" style="border-color:#1f6feb;color:#1f6feb">➕ Adicionales (ANSUL, fatiga, insumos 250 h…)</button><select id="ccPer" style="width:auto;font-size:12px;padding:3px 6px"><option value="">＋ Personal del catálogo…</option>${D.personal.map(p => `<option value="${p.id}">${esc(p.cargo)}${+p.valor_hh ? ' · ' + clp(p.valor_hh * P('horas_mes', 180)) + '/mes' : ''}</option>`).join('')}</select></div>
     ${rows.length ? `<div class="tw"><table><thead><tr><th>Concepto</th><th style="width:90px">Unidad</th><th class="n" style="width:90px">Cantidad</th><th class="n" style="width:130px">Valor unitario $</th><th class="n" style="width:130px">Subtotal</th><th style="width:40px"></th></tr></thead><tbody>
-      ${rows.map((r, k) => `<tr><td><input data-cc="${k}" data-ck="c" value="${esc(r.c)}"></td><td><input data-cc="${k}" data-ck="u" value="${esc(r.u || '')}"></td><td class="n"><input data-cc="${k}" data-ck="q" inputmode="decimal" value="${r.q ?? ''}" style="text-align:right"></td><td class="n"><input data-cc="${k}" data-ck="p" inputmode="numeric" value="${r.p ?? ''}" style="text-align:right" placeholder="costo"></td><td class="n">${clp((+r.q || 0) * (+r.p || 0))}</td><td><button class="dan sm" data-ccx="${k}">✕</button></td></tr>`).join('')}
+      ${(() => { const fila = (r, k) => `<tr><td><input data-cc="${k}" data-ck="c" value="${esc(r.c)}">${r.para && r.para.length ? `<div class="small muted">solo en: ${esc(r.para.join(', '))}</div>` : ''}</td><td><input data-cc="${k}" data-ck="u" value="${esc(r.u || '')}"></td><td class="n"><input data-cc="${k}" data-ck="q" inputmode="decimal" value="${r.q ?? ''}" style="text-align:right"></td><td class="n"><input data-cc="${k}" data-ck="p" inputmode="numeric" value="${r.p ?? ''}" style="text-align:right" placeholder="costo"></td><td class="n">${clp((+r.q || 0) * (+r.p || 0))}</td><td><button class="dan sm" data-ccx="${k}">✕</button></td></tr>`;
+        const nor = rows.map((r, k) => [r, k]).filter(([r]) => !r.adic), ad = rows.map((r, k) => [r, k]).filter(([r]) => r.adic);
+        return nor.map(([r, k]) => fila(r, k)).join('') + (ad.length ? `<tr><td colspan="6" style="background:#eef5fc;font-weight:700;color:var(--navy)">➕ Adicionales incluidos en el precio de cada equipo (no se ven como ítem en la oferta)</td></tr>` + ad.map(([r, k]) => fila(r, k)).join('') : ''); })()}
       <tr><td colspan="4"><b>Total costos compartidos</b></td><td class="n"><b>${clp(R.total)}</b></td><td></td></tr></tbody></table></div>
       <div class="small" style="margin-top:6px">Reparto: ${R.dest.map(it => `<b>${esc(it.item)}</b> ${clp(it.cc_share || 0)}${cc.modo === 'horas' ? ` (${nf(hrsItem(it))} h)` : ''}`).join(' · ') || '<span class="muted">no hay equipos donde repartir</span>'}. Se suma en el 🧮 de cada equipo como "Costos compartidos".</div>` : '<div class="small muted">Aún no hay costos compartidos.</div>'}
   </div>`;
@@ -2268,6 +2350,7 @@ function bindCompartidos() {
   document.querySelectorAll('[data-ccx]').forEach(b => b.onclick = () => { CC().rows.splice(+b.dataset.ccx, 1); redo(); });
   document.querySelectorAll('[data-cc]').forEach(inp => inp.onchange = () => { const r = CC().rows[+inp.dataset.cc], k = inp.dataset.ck; if (!r) return; r[k] = ['q', 'p'].includes(k) ? num(inp.value) : inp.value; redo(); });
   if ($('ccMo')) $('ccMo').onchange = () => { CC().modo = $('ccMo').value; redo(); };
+  if ($('ccAdic')) $('ccAdic').onclick = formAdicionales;
 }
 
 /* ---------- Registro comercial (licitaciones y ofertas) e indicadores de gestión ---------- */
