@@ -2323,7 +2323,7 @@ function vGestion() {
     .sort((a, b) => (b.fecha_adjudicacion || b.fecha_envio || b.fecha_inicio || '').localeCompare(a.fecha_adjudicacion || a.fecha_envio || a.fecha_inicio || ''));
   const cnt = e => L.filter(l => e === 'abiertas' ? abiertas.includes(l.estado) : e === 'todas' || l.estado === e).length;
   $('view').innerHTML = `
-  <div class="row" style="margin-bottom:10px"><div><h2 style="margin:0">📊 Gestión comercial</h2><div class="small muted">Responsable de la cartera comercial: <b>${esc(AJ('firmante_nombre') || 'Alejandro Osorio Correa')}</b> · ${esc(AJ('firmante_cargo') || 'Encargado de Gestión Comercial y Control')}</div></div><span class="sp"></span><button onclick="location.hash='proyeccion'" title="Estimado de ventas del próximo mes">📈 Proyección del mes</button> <button class="pri" id="gNew">＋ Nueva licitación / oferta</button></div>
+  <div class="row" style="margin-bottom:10px"><div><h2 style="margin:0">📊 Gestión comercial</h2><div class="small muted">Responsable de la cartera comercial: <b>${esc(AJ('firmante_nombre') || 'Alejandro Osorio Correa')}</b> · ${esc(AJ('firmante_cargo') || 'Encargado de Gestión Comercial y Control')}</div></div><span class="sp"></span><button onclick="location.hash='proyeccion'" title="Estimado de ventas del próximo mes">📈 Proyección del mes</button> <button id="gRev" title="Busca duplicados y fechas cruzadas">🔍 Revisar datos${(() => { try { const n = revisarDatos().pend.length; return n ? ` <span class="chip c-red">${n}</span>` : ' <span class="chip c-green">✓</span>'; } catch (e) { return ''; } })()}</button> <button class="pri" id="gNew">＋ Nueva licitación / oferta</button></div>
   <div class="card"><div class="row" style="gap:8px">
     <label class="row small" style="margin:0;gap:4px">Período <select id="gPer" style="width:auto"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.map(m => `<option value="${m}">${mesTxt(m)}</option>`).join('')}</select></label>
     <label class="row small" style="margin:0;gap:4px">Unidad <select id="gUn" style="width:auto"><option value="">Todas</option><option>Terracop</option><option>Maestranza</option><option>Transporte</option></select></label>
@@ -2365,6 +2365,7 @@ function vGestion() {
   document.querySelectorAll('[data-gest]').forEach(b => b.onclick = () => { GF.est = b.dataset.gest; vGestion(); });
   document.querySelectorAll('[data-lic]').forEach(tr => tr.onclick = () => formLic(byId('licitaciones', tr.dataset.lic)));
   $('gNew').onclick = () => formLic(null);
+  if ($('gRev')) $('gRev').onclick = verRevision;
   document.querySelectorAll('[data-gk]').forEach(k => k.onclick = () => gDetalle(k.dataset.gk, K, perTxt));
 }
 function gDetalle(tipo, K, perTxt) {
@@ -2721,6 +2722,59 @@ function vProyeccion() {
   document.querySelectorAll('[data-pyp]').forEach(i => i.onchange = () => guardaLic(i.dataset.pyp, Math.max(0, Math.min(100, Math.round(num(i.value) || 0))), document.querySelector(`[data-pyi="${i.dataset.pyp}"]`).checked));
   document.querySelectorAll('[data-pyd]').forEach(i => i.onchange = () => guardar(() => upd('licitaciones', i.dataset.pyd, {duracion: i.value.trim() || null}), 'Duración guardada'));
   document.querySelectorAll('[data-pyi]').forEach(i => i.onchange = () => guardaLic(i.dataset.pyi, Math.round(num(document.querySelector(`[data-pyp="${i.dataset.pyi}"]`).value) || 0), i.checked));
+}
+/* ---------------- Revisión de datos (duplicados e inconsistencias) ---------------- */
+function revisarDatos() {
+  const R = [], add = (k, chequeo, ref, det, ir) => R.push({k, chequeo, ref, det, ir});
+  const L = (D.licitaciones || []).filter(l => !esPruebaLic(l)), m$ = v => clp(+v || 0), totL = l => +(l.monto_total || l.monto_adjudicado || l.monto_oferta || 0);
+  const grp = (arr, f) => arr.reduce((o, x) => { const k = f(x); if (k != null && k !== '') (o[k] = o[k] || []).push(x); return o; }, {});
+  // registro comercial
+  Object.entries(grp(L, l => l.codigo)).filter(([, a]) => a.length > 1).forEach(([c, a]) => add('cod:' + c, 'Código repetido en Gestión', c, a.map(l => `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 40)} · ${m$(totL(l))}`).join(' | '), {lic: a[0].id}));
+  Object.values(grp(L.filter(l => totL(l) > 0), l => normTxt(l.mandante || '').split(' ')[0] + '|' + totL(l))).filter(a => a.length > 1)
+    .forEach(a => add('dup:' + a.map(l => l.id).sort().join(','), 'Posible oferta duplicada (mismo mandante y monto)', a.map(l => l.codigo || 's/código').join(', '), `${a[0].mandante || ''} · ${m$(totL(a[0]))} · ${a.map(l => (l.proyecto || '').slice(0, 35)).join(' | ')}`, {lic: a[0].id}));
+  L.filter(l => l.estado === 'adjudicada' && (!l.fecha_adjudicacion || !totL(l))).forEach(l => add('adj:' + l.id, 'Adjudicada sin fecha o sin monto', l.codigo || 's/código', `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 50)}${!l.fecha_adjudicacion ? ' · SIN FECHA' : ''}${!totL(l) ? ' · SIN MONTO' : ''}`, {lic: l.id}));
+  L.filter(l => l.monto_total != null && l.monto_adjudicado != null && +l.monto_total < +l.monto_adjudicado).forEach(l => add('tot:' + l.id, 'Total con prórrogas menor que el adjudicado', l.codigo || 's/código', `adjudicado ${m$(l.monto_adjudicado)} · total ${m$(l.monto_total)}`, {lic: l.id}));
+  if (D.hasLinea) L.filter(l => (l.linea === 'maquinaria') !== !!l.es_arriendo).forEach(l => add('lin:' + l.id, 'Línea de negocio no calza con "es arriendo"', l.codigo || 's/código', `${l.mandante || ''} · ${(l.proyecto || '').slice(0, 45)}`, {lic: l.id}));
+  const prApp = L.filter(l => /\[per:/.test(l.notas || ''));
+  Object.entries(grp(prApp, l => (l.notas.match(/\[per:([^\]]+)\]/) || [])[1])).filter(([, a]) => a.length > 1).forEach(([p, a]) => add('per2:' + p, 'Prórroga registrada dos veces como venta', a.map(l => l.codigo).join(', '), a.map(l => m$(totL(l))).join(' + '), {lic: a[1].id}));
+  L.filter(l => (l.origen || 'excel') === 'excel' && l.estado === 'adjudicada' && +l.monto_total > (+l.monto_adjudicado || 0) + 1).forEach(l => {
+    const pr = prApp.filter(p => normTxt(p.mandante || '').split(' ')[0] === normTxt(l.mandante || '').split(' ')[0]);
+    if (pr.length) add('xls:' + l.id + ':' + Math.round(+l.monto_total), 'Revisar: total del Excel incluye prórrogas y además hay prórrogas registradas en la app', l.codigo || 's/código', `${l.mandante || ''} · adjudicado ${m$(l.monto_adjudicado)} · total ${m$(l.monto_total)} · prórrogas app: ${pr.map(p => p.codigo + ' ' + m$(totL(p))).join(', ')}`, {lic: l.id});
+  });
+  // arriendos
+  D.arriendos.filter(a => !esPruebaArr(a)).forEach(a => {
+    const c = calc(a), fl = byId('flota', a.flota_id), nom = `${fl ? (fl.patente || fl.codigo) + ' · ' : ''}${a.descripcion}`;
+    c.pers.forEach((p, i) => c.pers.slice(i + 1).forEach(q => { if (p.desde && q.desde && p.hasta && q.desde <= p.hasta && p.desde <= (q.hasta || q.desde))
+      add(`pc:${p.id}:${q.id}:${p.desde}${p.hasta}${q.desde}${q.hasta}`, 'Períodos que se cruzan', nom, `período ${p.n} (${txtRango(p)}) se cruza con período ${q.n} (${txtRango(q)})`, {arr: a.id, tab: 'per'}); }));
+    Object.entries(grp(c.edps, e => e.n)).filter(([, x]) => x.length > 1).forEach(([n]) => add(`en:${a.id}:${n}`, 'EDP con número repetido', nom, `EDP N° ${n} aparece más de una vez`, {arr: a.id, tab: 'edp'}));
+    c.edps.forEach((e, i) => c.edps.slice(i + 1).forEach(f => { if (e.desde && f.desde && e.hasta && f.desde <= e.hasta && e.desde <= (f.hasta || f.desde))
+      add(`ec:${e.id}:${f.id}:${e.desde}${e.hasta}${f.desde}${f.hasta}`, 'EDP con fechas que se cruzan (posible cobro doble)', nom, `EDP N° ${e.n} (${txtRango(e)}) y EDP N° ${f.n} (${txtRango(f)})`, {arr: a.id, tab: 'edp'}); }));
+    c.edps.forEach(e => { const p = c.pers.filter(q => q.desde && q.desde <= (e.desde || e.hasta || '')).pop();
+      if (e.tarifa != null && p && p.tarifa != null && Math.abs(e.tarifa - p.tarifa) > 1 && a.modalidad !== 'global') add(`et:${e.id}:${e.tarifa}:${p.tarifa}`, 'EDP con tarifa distinta a la de su período', nom, `EDP N° ${e.n} a ${m$(e.tarifa)} · período ${p.n} a ${m$(p.tarifa)} (${e.estado})`, {arr: a.id, tab: 'edp'}); });
+    const up = c.pers[c.pers.length - 1];
+    if (['palabra', 'con_oc'].includes(a.estado) && up && up.tarifa != null && a.tarifa != null && Math.abs(a.tarifa - up.tarifa) > 1 && a.modalidad !== 'global')
+      add(`at:${a.id}:${a.tarifa}:${up.tarifa}`, 'Tarifa del arriendo distinta a la de su último período', nom, `arriendo ${m$(a.tarifa)} · último período (${up.n}) ${m$(up.tarifa)}. El próximo EDP saldría con la tarifa del arriendo.`, {arr: a.id, edit: true});
+  });
+  let ok = {}; try { ok = JSON.parse(AJ('revision_ok') || '{}'); } catch (e) {}
+  return {todos: R, pend: R.filter(x => !ok[x.k]), ok: R.filter(x => ok[x.k])};
+}
+function verRevision() {
+  const V = revisarDatos(), fila = (x, esOk) => `<tr><td>${esc(x.chequeo)}</td><td><b>${esc(x.ref)}</b></td><td class="small">${esc(x.det)}</td><td style="white-space:nowrap"><button class="sm" data-rvir="${encodeURIComponent(JSON.stringify(x.ir))}">Abrir</button> ${esOk ? `<button class="sm" data-rvno="${esc(x.k)}" title="Volver a mostrarlo como pendiente">Reactivar</button>` : `<button class="sm" data-rvok="${esc(x.k)}" title="Revisado: está bien así, no volver a mostrar">✓ Está bien</button>`}</td></tr>`;
+  modal(`<div class="row"><h3 style="margin:0">🔍 Revisión de datos</h3><span class="sp"></span><button id="rvX">Cerrar</button></div>
+    <div class="small muted" style="margin:4px 0 10px">Busca duplicados y datos inconsistentes en Gestión, arriendos, períodos y EDP. Solo revisa: no cambia nada. Use <b>"Abrir"</b> para corregir, o <b>"✓ Está bien"</b> si ya lo revisó y es correcto (no vuelve a aparecer mientras no cambie).</div>
+    ${V.pend.length ? `<div class="msg err" style="margin-bottom:8px">⚠️ ${V.pend.length} punto(s) por revisar</div><div class="tw"><table><thead><tr><th>Chequeo</th><th>Referencia</th><th>Detalle</th><th></th></tr></thead><tbody>${V.pend.map(x => fila(x, false)).join('')}</tbody></table></div>` : '<div class="msg ok">✅ Todo en orden: no hay duplicados ni fechas cruzadas. Los datos están listos para gerencia.</div>'}
+    ${V.ok.length ? `<details style="margin-top:10px"><summary class="small">Revisados y marcados como correctos (${V.ok.length})</summary><div class="tw"><table><tbody>${V.ok.map(x => fila(x, true)).join('')}</tbody></table></div></details>` : ''}
+    <div class="small muted" style="margin-top:8px">Última revisión: ${AJ('revision_fecha') ? fd(AJ('revision_fecha').slice(0, 10)) + ' ' + AJ('revision_fecha').slice(11, 16) : 'nunca'}</div>`);
+  $('mbox').classList.add('wide'); $('rvX').onclick = () => { closeModal(); go(); };
+  const setAJ = async (clave, valor) => { await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave, valor})}); D.ajustesMap[clave] = valor; };
+  setAJ('revision_fecha', new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 16)).catch(() => {});
+  const marca = async (k, v) => { let ok = {}; try { ok = JSON.parse(AJ('revision_ok') || '{}'); } catch (e) {} if (v) ok[k] = todayISO(); else delete ok[k];
+    try { await setAJ('revision_ok', JSON.stringify(ok)); } catch (e) { return alert(e.message); } verRevision(); };
+  document.querySelectorAll('[data-rvok]').forEach(b => b.onclick = () => marca(b.dataset.rvok, true));
+  document.querySelectorAll('[data-rvno]').forEach(b => b.onclick = () => marca(b.dataset.rvno, false));
+  document.querySelectorAll('[data-rvir]').forEach(b => b.onclick = () => { const ir = JSON.parse(decodeURIComponent(b.dataset.rvir)); closeModal();
+    if (ir.lic) { location.hash = 'gestion'; setTimeout(() => formLic(byId('licitaciones', ir.lic)), 300); }
+    else if (ir.arr) { location.hash = 'a-' + ir.arr; setTimeout(() => { if (ir.edit) { const a = byId('arriendos', ir.arr); a && formArriendo(a); } else if (ir.tab) { const t = document.querySelector(`.tabs button[data-t="${ir.tab}"]`); t && t.click(); } }, 400); } });
 }
 /* ---------- EDP por enviar y HES pendientes (detalle) ---------- */
 function listaPendientes() {
