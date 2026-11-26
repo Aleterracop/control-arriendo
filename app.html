@@ -263,6 +263,7 @@ async function loadAll() {
   D.hasDoc = D.cotizaciones.some(c => 'doc' in c);
   D.hasCC = D.cotizaciones.some(c => 'compartidos' in c);
   D.hasArea = D.arriendos.some(a => 'area' in a);
+  D.hasLinea = (D.licitaciones || []).some(l => 'linea' in l);
   setTimeout(guardarUbic, 1500);
   if (!('mantencion_250' in D.P)) { const row = {clave: 'mantencion_250', valor: 1500000, descripcion: 'Valor por mantención de 250 h cobrada al mandante (traslado ida y vuelta de personal y vehículo). No aplica a mandantes con mantención incluida (Fenix).'};
     api('parametros', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify([row])}).then(() => { D.parametros.push(row); D.P.mantencion_250 = row.valor; }).catch(() => {}); }
@@ -2249,13 +2250,15 @@ async function syncLic(c) {
   if (est === 'no_adjudicada' && /Perdida:/i.test(c.notas || '') && (!ex || !ex.motivo)) o.motivo = (c.notas.match(/Perdida:\s*([^·]+)/i) || [])[1] || null;
   try {
     if (ex) { const r = await upd('licitaciones', ex.id, o); Object.assign(ex, r || o); }
-    else { const r = await ins('licitaciones', {...o, codigo: String(c.numero), mandante: m.nombre || c.cliente || null, proyecto: c.referencia || null, tipo_servicio: arr ? 'Arriendo de maquinaria' : 'Servicio', unidad: 'Terracop', responsable: 'Alejandro Osorio', es_arriendo: arr, fecha_inicio: c.fecha, origen: 'app'}); if (r) D.licitaciones.push(r); }
+    else { const r = await ins('licitaciones', {...o, codigo: String(c.numero), mandante: m.nombre || c.cliente || null, proyecto: c.referencia || null, tipo_servicio: arr ? 'Arriendo de maquinaria' : 'Servicio', unidad: 'Terracop', responsable: 'Alejandro Osorio', es_arriendo: arr, fecha_inicio: c.fecha, origen: 'app', ...(D.hasLinea ? {linea: arr ? 'maquinaria' : 'servicio'} : {})}); if (r) D.licitaciones.push(r); }
   } catch (e) { if (e.message === 'SESSION') throw e; console.warn('syncLic', e); }
 }
 let GF = {per: 'mes', un: '', resp: '', tipo: '', est: 'abiertas', q: ''};
+const LINEAS = [['maquinaria', '🚜 Arriendo de maquinaria'], ['servicio', '🔧 Servicios (cotizaciones rápidas)'], ['licitacion', '📋 Licitaciones']];
+const lineaLic = l => l.linea || (l.es_arriendo ? 'maquinaria' : 'licitacion');
 function filtroLic(L) {
   return L.filter(l => !esPruebaLic(l) && (!GF.un || (l.unidad || 'Terracop') === GF.un) && (!GF.resp || (l.responsable || '—') === GF.resp)
-    && (!GF.tipo || (GF.tipo === 'arr' ? l.es_arriendo : !l.es_arriendo)));
+    && (!GF.tipo || lineaLic(l) === GF.tipo));
 }
 function enPeriodo(d) {
   if (GF.per === 'todo') return true;
@@ -2296,8 +2299,20 @@ function vGestion() {
   <div class="card"><div class="row" style="gap:8px">
     <label class="row small" style="margin:0;gap:4px">Período <select id="gPer" style="width:auto"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.map(m => `<option value="${m}">${mesTxt(m)}</option>`).join('')}</select></label>
     <label class="row small" style="margin:0;gap:4px">Unidad <select id="gUn" style="width:auto"><option value="">Todas</option><option>Terracop</option><option>Maestranza</option><option>Transporte</option></select></label>
-    <label class="row small" style="margin:0;gap:4px">Tipo <select id="gTi" style="width:auto"><option value="">Todo</option><option value="arr">Arriendo de maquinaria</option><option value="serv">Servicios y obras</option></select></label>
+    <label class="row small" style="margin:0;gap:4px">Tipo <select id="gTi" style="width:auto"><option value="">Todo</option>${LINEAS.map(([k, t]) => `<option value="${k}">${t}</option>`).join('')}</select></label>
   </div></div>
+  ${(() => {   // resumen por línea de negocio (siempre todas las líneas, con los demás filtros)
+    const G0 = GF.tipo; GF.tipo = ''; const L0 = filtroLic(D.licitaciones); GF.tipo = G0;
+    let PR = null; try { PR = proyeccion(mesSig()); } catch (e) {}
+    const fila = (k, t) => { const Lk = L0.filter(l => lineaLic(l) === k), Kk = kpisGestion(Lk);
+      const pj = PR ? (k === 'maquinaria' ? PR.tot.maq : 0) + PR.lic.filter(x => x.linea === k).reduce((s2, x) => s2 + x.aporte, 0) : 0;
+      return {k, t, vend: Kk.vendido, nV: Kk.adj.length, env: Kk.sum(Kk.env, l => +l.monto_oferta), nE: Kk.env.length, esp: Kk.sum(Kk.espera, l => +l.monto_oferta), nW: Kk.espera.length, pj}; };
+    const F = LINEAS.map(([k, t]) => fila(k, t)), T = F.reduce((a, f) => ({vend: a.vend + f.vend, env: a.env + f.env, esp: a.esp + f.esp, pj: a.pj + f.pj, nV: a.nV + f.nV, nE: a.nE + f.nE, nW: a.nW + f.nW}), {vend: 0, env: 0, esp: 0, pj: 0, nV: 0, nE: 0, nW: 0});
+    return `<div class="card"><div class="row"><h3 style="margin:0">Resumen por línea de negocio</h3><span class="sp"></span><a href="#proyeccion" class="small">📈 Ver proyección ${esc(mesNom(mesSig()))} ›</a></div>
+      <div class="tw" style="margin-top:6px"><table><thead><tr><th>Línea</th><th class="n">Vendido (adjudicado) · ${esc(perTxt)}</th><th class="n">Ofertas enviadas · ${esc(perTxt)}</th><th class="n">En espera (hoy)</th><th class="n">Proyección ${esc(mesNom(mesSig()))}</th></tr></thead><tbody>
+      ${F.map(f => `<tr data-glin="${f.k}" style="cursor:pointer${GF.tipo === f.k ? ';background:#eef5fc' : ''}"><td><b>${f.t}</b></td><td class="n">${clp(f.vend)} <span class="small muted">(${f.nV})</span></td><td class="n">${clp(f.env)} <span class="small muted">(${f.nE})</span></td><td class="n">${clp(f.esp)} <span class="small muted">(${f.nW})</span></td><td class="n">${clp(f.pj)}</td></tr>`).join('')}
+      <tr style="font-weight:700;background:#f1f5fb"><td>Σ Total global</td><td class="n">${clp(T.vend)} <span class="small muted">(${T.nV})</span></td><td class="n">${clp(T.env)} <span class="small muted">(${T.nE})</span></td><td class="n">${clp(T.esp)} <span class="small muted">(${T.nW})</span></td><td class="n">${clp(T.pj)}</td></tr></tbody></table></div>
+      <div class="small muted" style="margin-top:4px">Pinche una línea para filtrar todo lo de abajo. Proyección: maquinaria = arriendos activos según su ritmo + ofertas de maquinaria que marque para iniciar; servicios y licitaciones = ofertas marcadas × probabilidad (en 📈 Proyección).</div></div>`; })()}
   <div class="kpis">
     <div class="kpi g" data-gk="adj" style="cursor:pointer" title="Ver detalle"><div class="l">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="v">${clp(K.vendido)}</div><div class="small muted">${K.adj.length} adjudicación(es)${K.vendido !== K.vendBase ? ` · base ${clp(K.vendBase)} + prórrogas ${clp(K.vendido - K.vendBase)}` : ''}</div></div>
     <div class="kpi" data-gk="env" style="cursor:pointer" title="Ver detalle"><div class="l">Ofertas enviadas · ${esc(perTxt)}</div><div class="v">${clp(K.sum(K.env, l => +l.monto_oferta))}</div><div class="small muted">${K.env.length} oferta(s)</div></div>
@@ -2317,6 +2332,7 @@ function vGestion() {
   $('gPer').value = GF.per; $('gUn').value = GF.un; $('gTi').value = GF.tipo;
   $('gPer').onchange = () => { GF.per = $('gPer').value; vGestion(); }; $('gUn').onchange = () => { GF.un = $('gUn').value; vGestion(); };
   $('gTi').onchange = () => { GF.tipo = $('gTi').value; vGestion(); };
+  document.querySelectorAll('[data-glin]').forEach(tr => tr.onclick = () => { GF.tipo = GF.tipo === tr.dataset.glin ? '' : tr.dataset.glin; vGestion(); });
   $('gQ').oninput = () => { GF.q = $('gQ').value; clearTimeout(vGestion.t); vGestion.t = setTimeout(() => { vGestion(); const q = $('gQ'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); }, 350); };
   document.querySelectorAll('[data-gest]').forEach(b => b.onclick = () => { GF.est = b.dataset.gest; vGestion(); });
   document.querySelectorAll('[data-lic]').forEach(tr => tr.onclick = () => formLic(byId('licitaciones', tr.dataset.lic)));
@@ -2368,7 +2384,7 @@ function formLic(l) {
   </div>
   <div class="f" style="margin-top:10px">
     <div><label>Motivo (no adjudicada / desistida)</label><input id="lMv" value="${esc(l.motivo || '')}"></div>
-    <div><label class="row" style="gap:6px;margin-top:22px;cursor:pointer"><input type="checkbox" id="lAr" style="width:auto" ${l.es_arriendo ? 'checked' : ''}> Es arriendo de maquinaria</label></div>
+    ${D.hasLinea ? `<div><label>Línea de negocio</label><select id="lLi">${LINEAS.map(([k, t]) => `<option value="${k}" ${lineaLic(l) === k ? 'selected' : ''}>${t}</option>`).join('')}</select><input type="checkbox" id="lAr" hidden ${l.es_arriendo ? 'checked' : ''}></div>` : `<div><label class="row" style="gap:6px;margin-top:22px;cursor:pointer"><input type="checkbox" id="lAr" style="width:auto" ${l.es_arriendo ? 'checked' : ''}> Es arriendo de maquinaria</label></div>`}
   </div>
   <div style="margin-top:10px"><label>Notas</label><textarea id="lNo" rows="2">${esc(l.notas || '')}</textarea></div>
   <div class="mf">${nuevo ? '' : '<button class="dan" id="lDel">Eliminar</button>'}<span class="sp"></span><button id="lCan">Cancelar</button><button class="pri" id="lOk">Guardar</button></div>`);
@@ -2378,7 +2394,8 @@ function formLic(l) {
   $('lOk').onclick = () => {
     const o = {codigo: val('lCo') || null, mandante: val('lMa') || null, estado: val('lEs'), proyecto: val('lPr') || null, tipo_servicio: val('lTi') || null, unidad: val('lUn'),
       fecha_envio: val('lFe') || null, fecha_adjudicacion: val('lFa') || null, duracion: val('lDu') || null, monto_oferta: num(val('lMo')), monto_adjudicado: num(val('lMa2')), monto_total: num(val('lMt')),
-      motivo: val('lMv') || null, es_arriendo: $('lAr').checked, notas: val('lNo') || null, actualizado: new Date().toISOString()};
+      motivo: val('lMv') || null, es_arriendo: D.hasLinea ? val('lLi') === 'maquinaria' : $('lAr').checked, notas: val('lNo') || null, actualizado: new Date().toISOString()};
+    if (D.hasLinea) o.linea = val('lLi');
     if (!o.mandante && !o.proyecto) return alert('Escriba al menos el mandante o el servicio.');
     if (o.estado === 'adjudicada' && !o.fecha_adjudicacion) o.fecha_adjudicacion = todayISO();
     guardar(async () => {
@@ -2607,7 +2624,7 @@ function tasaHistorica() { const L = (D.licitaciones || []).filter(l => !/prueba
   const g = L.filter(l => l.estado === 'adjudicada').length, p = L.filter(l => l.estado === 'no_adjudicada').length; return g + p ? g / (g + p) : 0.3; }
 function proyeccion(mes) {
   const m1 = mes + '-01', m2 = finMes(mes), ndm = +m2.slice(8), hoy = todayISO(), maq = [];
-  D.arriendos.filter(a => ['palabra', 'con_oc'].includes(a.estado) && a.modalidad !== 'global' && !esPruebaArr(a)).forEach(a => {
+  D.arriendos.filter(a => ['palabra', 'con_oc'].includes(a.estado) && (a.modalidad !== 'global' || globalMaq(a)) && !esPruebaArr(a)).forEach(a => {
     const ini = a.fecha_inicio && a.fecha_inicio > m1 ? a.fecha_inicio : m1, fin = a.modalidad !== 'hora' && a.fecha_fin && a.fecha_fin < m2 ? a.fecha_fin : m2;   // por día/mes respeta el "vigente hasta"
     const dd = ini > fin ? 0 : days(ini, fin) + 1; if (ini > m2) return;
     const m = mandante(a), fl = byId('flota', a.flota_id), tar = +a.tarifa || 0; let q, u, ritmo = null, base = '';
@@ -2617,6 +2634,7 @@ function proyeccion(mes) {
       ritmo = rs.length ? hrs / span : (+a.base_cobro || 180) / 30; base = rs.length ? `ritmo de los últimos ${span} días` : 'sin reportes recientes: 180 h al mes';
       q = Math.round(ritmo * dd); u = 'h';
     } else if (a.modalidad === 'mes') { q = Math.round(dd / ndm * 100) / 100; u = 'mes'; base = 'mensual'; }
+    else if (a.modalidad === 'global') { const tot = a.fecha_fin && a.fecha_inicio ? days(a.fecha_inicio, a.fecha_fin) + 1 : 30; q = Math.round(dd / tot * 100) / 100; u = 'contrato'; base = `monto global prorrateado (${tot} días de contrato)`; }
     else { q = dd; u = 'días'; base = 'días corridos'; }
     const desm = a.fecha_fin && a.fecha_fin >= m1 && a.fecha_fin <= m2 ? +a.desmovilizacion || 0 : 0;
     if (!dd) base = `vigente hasta ${fd(a.fecha_fin)}: sin venta en el mes salvo prórroga`; else if (fin < m2) base += ` hasta el ${fd(fin)} (vigente hasta)`;
@@ -2629,7 +2647,7 @@ function proyeccion(mes) {
   const th = tasaHistorica(), lic = [];
   (D.licitaciones || []).filter(l => l.estado === 'enviada' && !/prueba/i.test([l.proyecto, l.notas, l.mandante].join(' '))).forEach(l => {
     const dm = durMeses(l.duracion), of = +l.monto_oferta || 0, mens = dm ? of / Math.max(1, dm) : 0, pr = probLic(l) ?? th, inicia = iniciaLic(l, mes);
-    lic.push({id: l.id, cod: l.codigo, mand: l.mandante, proy: l.proyecto, of, dur: l.duracion || '', dm, mens: Math.round(mens), pr, inicia, aporte: inicia && dm ? Math.round(mens * pr * 0.5) : 0});
+    lic.push({id: l.id, cod: l.codigo, mand: l.mandante, proy: l.proyecto, linea: lineaLic(l), of, dur: l.duracion || '', dm, mens: Math.round(mens), pr, inicia, aporte: inicia && dm ? Math.round(mens * pr * 0.5) : 0});
   });
   const porIniciar = (D.cotizaciones || []).filter(c => c.estado === 'adjudicada' && !(c.notas || '').includes('[sin_arriendo]') && (!c.arriendo_id || !byId('arriendos', c.arriendo_id)) && !esPruebaCot(c))
     .map(c => ({n: nCot(c), mand: (byId('mandantes', c.mandante_id) || {}).nombre || c.cliente || '', ref: c.referencia || '', monto: (c.items || []).filter(i => i.tipo === 'i' && !i.oculto).reduce((t, i) => t + (+i.cantidad || 0) * (+i.precio || 0), 0)}));
@@ -2650,15 +2668,15 @@ function vProyeccion() {
   </div>
   <div class="card"><h3 style="margin-top:0">1 · Maquinaria en arriendo</h3><div class="small muted" style="margin-bottom:6px">Arriendos por hora: horas por día de los últimos 14 días × días del mes × tarifa. Por día: días corridos × tarifa. Por mes: tarifa mensual. Incluye desmovilización si el arriendo termina en el mes.</div>
     <div class="tw"><table><thead><tr><th>Mandante</th><th>Equipo</th><th>Base del cálculo</th><th class="n">Días</th><th class="n">Producción</th><th class="n">Tarifa</th><th class="n">Venta estimada</th></tr></thead><tbody>
-    ${R.maq.map(x => `<tr data-pya="${x.id}" style="cursor:pointer"><td>${esc(x.mand)}</td><td><b>${esc(x.pat || '')}</b> ${esc(x.eq)}${x.sinOC ? ' <span class="chip c-orange">sin OC</span>' : ''}</td><td class="small">${esc(x.base)}${x.ritmo != null ? ` (${nf(x.ritmo, 1)} h/día)` : ''}${x.desm ? ` · + desmov. ${clp(x.desm)}` : ''}</td><td class="n">${x.dd}</td><td class="n">${nf(x.q, x.u === 'mes' ? 2 : 0)} ${x.u}</td><td class="n">${clp(x.tar)}</td><td class="n">${clp(x.venta)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin arriendos activos.</td></tr>'}
+    ${R.maq.map(x => `<tr data-pya="${x.id}" style="cursor:pointer"><td>${esc(x.mand)}</td><td><b>${esc(x.pat || '')}</b> ${esc(x.eq)}${x.sinOC ? ' <span class="chip c-orange">sin OC</span>' : ''}</td><td class="small">${esc(x.base)}${x.ritmo != null ? ` (${nf(x.ritmo, 1)} h/día)` : ''}${x.desm ? ` · + desmov. ${clp(x.desm)}` : ''}</td><td class="n">${x.dd}</td><td class="n">${nf(x.q, x.u === 'mes' || x.u === 'contrato' ? 2 : 0)} ${x.u}</td><td class="n">${clp(x.tar)}</td><td class="n">${clp(x.venta)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Sin arriendos activos.</td></tr>'}
     <tr style="font-weight:700;background:#f1f5fb"><td colspan="6">Total maquinaria</td><td class="n">${clp(T.maq)}</td></tr></tbody></table></div>
     <div class="small muted" style="margin-top:6px">Supone que los equipos siguen trabajando todo el mes al mismo ritmo. Si un arriendo termina antes, márquelo con su fecha de término y la proyección se ajusta.</div></div>
   <div class="card"><h3 style="margin-top:0">2 · Licitaciones y ofertas en espera</h3>
     <div class="small muted" style="margin-bottom:6px">Marque <b>"Inicia en ${esc(mesNom(mes))}"</b> en las que podrían partir este mes. Se cuenta <b>medio mes</b> del monto mensual × la probabilidad. Probabilidad por defecto: su tasa histórica de adjudicación (<b>${nf(R.th * 100)}%</b>); la puede cambiar en cada una.</div>
-    <div class="tw"><table><thead><tr><th>Código</th><th>Mandante</th><th>Servicio</th><th class="n">Oferta</th><th>Duración</th><th class="n">Mensual</th><th class="n">Prob. %</th><th>Inicia en el mes</th><th class="n">Aporte al mes</th></tr></thead><tbody>
-    ${R.lic.map(x => `<tr><td>${esc(x.cod || '')}</td><td>${esc(x.mand || '')}</td><td>${esc((x.proy || '').slice(0, 55))}</td><td class="n">${clp(x.of)}</td><td><input data-pyd="${x.id}" value="${esc(x.dur)}" placeholder="ej. 3 meses" style="width:100px${x.dm ? '' : ';border-color:#e0a020'}"></td><td class="n">${x.dm ? clp(x.mens) : '<span class="small" style="color:#b45309">falta duración</span>'}</td>
-      <td class="n"><input data-pyp="${x.id}" value="${Math.round(x.pr * 100)}" style="width:60px;text-align:right"></td><td><input type="checkbox" data-pyi="${x.id}" ${x.inicia ? 'checked' : ''} style="width:auto"></td><td class="n">${clp(x.aporte)}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">Sin ofertas en espera.</td></tr>'}
-    <tr style="font-weight:700;background:#f1f5fb"><td colspan="8">Total ponderado</td><td class="n">${clp(T.lic)}</td></tr></tbody></table></div>
+    <div class="tw"><table><thead><tr><th>Código</th><th>Línea</th><th>Mandante</th><th>Servicio</th><th class="n">Oferta</th><th>Duración</th><th class="n">Mensual</th><th class="n">Prob. %</th><th>Inicia en el mes</th><th class="n">Aporte al mes</th></tr></thead><tbody>
+    ${R.lic.map(x => `<tr><td>${esc(x.cod || '')}</td><td class="small">${(LINEAS.find(z => z[0] === x.linea) || ['', ''])[1]}</td><td>${esc(x.mand || '')}</td><td>${esc((x.proy || '').slice(0, 55))}</td><td class="n">${clp(x.of)}</td><td><input data-pyd="${x.id}" value="${esc(x.dur)}" placeholder="ej. 3 meses" style="width:100px${x.dm ? '' : ';border-color:#e0a020'}"></td><td class="n">${x.dm ? clp(x.mens) : '<span class="small" style="color:#b45309">falta duración</span>'}</td>
+      <td class="n"><input data-pyp="${x.id}" value="${Math.round(x.pr * 100)}" style="width:60px;text-align:right"></td><td><input type="checkbox" data-pyi="${x.id}" ${x.inicia ? 'checked' : ''} style="width:auto"></td><td class="n">${clp(x.aporte)}</td></tr>`).join('') || '<tr><td colspan="10" class="muted">Sin ofertas en espera.</td></tr>'}
+    <tr style="font-weight:700;background:#f1f5fb"><td colspan="9">Total ponderado</td><td class="n">${clp(T.lic)}</td></tr></tbody></table></div>
     ${R.porIniciar.length ? `<div class="small" style="margin-top:8px"><b>Adjudicadas por iniciar</b> (aún sin arriendo; si parten este mes, súmelas al escenario optimista): ${R.porIniciar.map(c => `${esc(c.n)} ${esc(c.mand)} ${clp(c.monto)}`).join(' · ')}</div>` : ''}
     <div class="small muted" style="margin-top:6px">Escriba la <b>duración</b> de cada oferta (ej. "3 meses", "21 días", "24 meses"): con ella se calcula el monto mensual. Sin duración no se suma, para no inflar la proyección. Se guarda en el registro comercial.</div></div>
   <div class="card"><h3 style="margin-top:0">3 · Cobros esperados en el mes (caja)</h3><div class="small muted" style="margin-bottom:6px">EDP enviados en los últimos 75 días (o por enviar) sin pago registrado, cuyo pago estimado (envío + 30 días) cae dentro del mes. Montos netos, sin IVA. Si registra la fecha de pago en cada EDP, la proyección se afina.</div>
@@ -2697,25 +2715,27 @@ function verPendientes(tipo) {
   $('mbox').classList.add('wide'); $('pdX').onclick = closeModal;
   document.querySelectorAll('[data-pda]').forEach(tr => tr.onclick = () => { closeModal(); location.hash = 'a-' + tr.dataset.pda; });
 }
+const globalMaq = a => a.modalidad === 'global' && (!!a.flota_id || /\([A-Z]{4}-?\d{2}\)/.test(a.descripcion || ''));   // arriendo global de una máquina = maquinaria
 /* ---------------- Ubicación de maquinaria en arriendo ---------------- */
 function snapUbic() {
   const hoy = todayISO();
-  const items = D.arriendos.filter(a => (a.estado === 'palabra' || a.estado === 'con_oc') && a.modalidad !== 'global' && !esPruebaArr(a)).map(a => {
-    const c = calc(a), fl = byId('flota', a.flota_id), m = mandante(a), esH = a.modalidad === 'hora', k = a.modalidad === 'mes' ? 30 : 1;
+  const items = D.arriendos.filter(a => (a.estado === 'palabra' || a.estado === 'con_oc') && (a.modalidad !== 'global' || globalMaq(a)) && !esPruebaArr(a)).map(a => {
+    const c = calc(a), fl = byId('flota', a.flota_id), m = mandante(a), esH = a.modalidad === 'hora', k = a.modalidad === 'mes' ? 30 : 1, gl = a.modalidad === 'global';
+    const glTot = gl ? (a.fecha_fin && a.fecha_inicio ? days(a.fecha_inicio, a.fecha_fin) + 1 : 30) : 0, glAv = gl && a.fecha_inicio ? Math.max(0, Math.min(glTot, days(a.fecha_inicio, hoy) + 1)) : 0;
     const cor = c.edps.reduce((mx, e) => (e.hasta && e.hasta < hoy && (!mx || e.hasta > mx)) ? e.hasta : mx, null);
     const ult = c.hor[c.hor.length - 1], e0 = ult && ult.estado;
     const est = ['falla_terracop', 'taller', 'mantencion'].includes(e0) ? 'falla' : ['sin_operacion', 'falla_mandante'].includes(e0) && ult.fecha >= addDays(hoy, -2) ? 'parada' : 'ok';
     const pat = fl ? (fl.patente || fl.codigo) : ((a.descripcion || '').match(/\(([A-Z]{4}-?\d{2})\)/) || [])[1] || '';
     return {id: a.id, eq: a.descripcion, pat: mqFam(a.descripcion) === 'martillo' ? 'Martillo' : pat, fam: mqFam((a.descripcion || '') + ' ' + (fl ? fl.tipo || '' : '')), mand: m.nombre || '', mid: m.id || '', area: a.area || '',
-      u: esH ? 'h' : 'días', prog: Math.round((esH ? c.pend : c.pend * k) * 10) / 10, meta: Math.round((esH ? c.baseEf : c.base * k) * 10) / 10,
-      est, ini: cor ? addDays(cor, 1) : a.fecha_inicio || '', ult: c.ultimo || '', corr: !esH && a.conteo_dias !== 'reportados'};
+      u: esH ? 'h' : 'días', prog: gl ? glAv : Math.round((esH ? c.pend : c.pend * k) * 10) / 10, meta: gl ? glTot : Math.round((esH ? c.baseEf : c.base * k) * 10) / 10,
+      est, ini: gl ? a.fecha_inicio || '' : cor ? addDays(cor, 1) : a.fecha_inicio || '', ult: c.ultimo || '', corr: !esH && a.conteo_dias !== 'reportados'};
   });
   return {ts: new Date(Date.now() - new Date().getTimezoneOffset() * 6e4).toISOString().slice(0, 19), items};
 }
 async function guardarUbic() {   // deja la foto para el panel de don Nelson (solo si cambió)
   if (D.sinCot || !D.hasArea) return;
   try { const S = snapUbic(), prev = JSON.parse(AJ('ubicacion') || '{}');
-    try { const R = proyeccion(mesSig()); S.proy = {mes: R.mes, th: R.th, tot: R.tot, maq: R.maq.map(x => ({mand: x.mand, eq: x.eq, pat: x.pat, base: x.base, q: x.q, u: x.u, tar: x.tar, venta: x.venta})), lic: R.lic.filter(x => x.inicia).map(x => ({cod: x.cod, mand: x.mand, proy: x.proy, mens: x.mens, pr: x.pr, aporte: x.aporte})), nCaja: R.caja.length, nLic: R.lic.length}; } catch (e) {}
+    try { const R = proyeccion(mesSig()); S.proy = {mes: R.mes, th: R.th, tot: R.tot, maq: R.maq.map(x => ({mand: x.mand, eq: x.eq, pat: x.pat, base: x.base, q: x.q, u: x.u, tar: x.tar, venta: x.venta})), lic: R.lic.filter(x => x.inicia).map(x => ({cod: x.cod, mand: x.mand, proy: x.proy, linea: x.linea, mens: x.mens, pr: x.pr, aporte: x.aporte})), nCaja: R.caja.length, nLic: R.lic.length}; } catch (e) {}
     if (JSON.stringify(prev.items || []) === JSON.stringify(S.items) && JSON.stringify(prev.proy || null) === JSON.stringify(S.proy || null) && (prev.ts || '').slice(0, 10) === S.ts.slice(0, 10)) return;
     await api('ajustes', {method: 'POST', headers: {Prefer: 'resolution=merge-duplicates,return=minimal'}, body: JSON.stringify({clave: 'ubicacion', valor: JSON.stringify(S)})}); D.ajustesMap.ubicacion = JSON.stringify(S);
   } catch (e) {}

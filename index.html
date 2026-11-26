@@ -725,7 +725,8 @@ async function loadHistory(selectId) {
   await loadSnapshot(h.value);
 }
 var LIVE = false;
-let GEST = null, GPER = 'mes', GSETS = {};
+let GEST = null, GPER = 'mes', GSETS = {}, GLIN = '';
+const G_LIN = [['maquinaria', '🚜 Arriendo de maquinaria'], ['servicio', '🔧 Servicios (cotizaciones rápidas)'], ['licitacion', '📋 Licitaciones']], gLin = l => l.linea || (l.arr ? 'maquinaria' : 'licitacion');
 function gTablaDet(rows, key) {
   const tot = l => +(l.total || l.adj || l.oferta || 0);
   if (!rows.length) return '<div class="cap">Sin registros.</div>';
@@ -743,7 +744,7 @@ const G_EST = {en_estudio: 'En estudio', en_aprobacion: 'En aprobación', enviad
 function renderGestion() {
   const box = $('gestion'); if (!GEST || !GEST.length) { box.hidden = true; return; }
   box.hidden = false;
-  const hoy = new Date().toISOString().slice(0, 10), L = GEST;
+  const hoy = new Date().toISOString().slice(0, 10), L = GLIN ? GEST.filter(l => gLin(l) === GLIN) : GEST;
   const enP = d => GPER === 'todo' ? true : !d ? false : GPER === 'mes' ? gMes(d) === gMes(hoy) : GPER === 'anio' ? String(d).slice(0, 4) === hoy.slice(0, 4) : gMes(d) === GPER;
   const tot = l => +(l.total || l.adj || l.oferta || 0), sum = (a, f) => a.reduce((x, y) => x + (f(y) || 0), 0);
   const adj = L.filter(l => l.est === 'adjudicada' && enP(l.fAdj || l.fEnv));
@@ -760,6 +761,14 @@ function renderGestion() {
     <tr><td colspan="6"><b>Total (${rows.length})${rows.some(l => l.est === 'en_pausa') && rows.some(l => l.est === 'enviada') ? ` · enviadas ${clp(sum(rows.filter(l => l.est === 'enviada'), l => +l.oferta))} + en pausa ${clp(sum(rows.filter(l => l.est === 'en_pausa'), l => +l.oferta))}` : ''}</b></td><td class="n"><b>${clp(sum(rows, l => +l.oferta))}</b></td><td class="n"><b>${clp(sum(rows.filter(l => l.est === 'adjudicada'), tot))}</b></td></tr></tbody></table></div>` : '<div class="cap">Sin registros en este período.</div>';
   box.innerHTML = `<div class="card"><h2>Gestión comercial</h2><div class="cap">Responsable de la cartera comercial: <b>Alejandro Osorio Correa</b> · licitaciones y cotizaciones (montos netos, sin costos). El mes de venta es el de la adjudicación.</div>
     <div class="gsel noprint">Período: <select id="gPer"><option value="mes">Este mes</option><option value="anio">Este año</option><option value="todo">Todo</option>${meses.slice().reverse().map(m => `<option value="${m}">${gMesTxt(m)}</option>`).join('')}</select></div>
+    ${(() => { const P = UBIC && UBIC.snap && UBIC.snap.proy, mnS = P ? new Date(P.mes + '-15T12:00:00').toLocaleDateString('es-CL', {month: 'long', year: 'numeric'}) : '';
+      const F = G_LIN.map(([k, t]) => { const Lk = GEST.filter(l => gLin(l) === k), aj = Lk.filter(l => l.est === 'adjudicada' && enP(l.fAdj || l.fEnv)), en = Lk.filter(l => ['enviada', 'adjudicada', 'no_adjudicada', 'descartada'].includes(l.est) && +l.oferta && enP(l.fEnv || l.fIni)), es = Lk.filter(l => l.est === 'enviada');
+        const pj = P ? (k === 'maquinaria' ? P.tot.maq : 0) + (P.lic || []).filter(x => (x.linea || 'licitacion') === k).reduce((a, x) => a + x.aporte, 0) : null;
+        return {k, t, v: sum(aj, tot), nv: aj.length, e: sum(en, l => +l.oferta), ne: en.length, w: sum(es, l => +l.oferta), nw: es.length, pj}; });
+      const T = F.reduce((a, f) => ({v: a.v + f.v, e: a.e + f.e, w: a.w + f.w, pj: a.pj + (f.pj || 0)}), {v: 0, e: 0, w: 0, pj: 0});
+      return `<h3 style="margin:8px 0 6px">Resumen por línea de negocio</h3><div class="tblwrap" style="margin-bottom:12px"><table><thead><tr><th>Línea</th><th class="n">Vendido · ${esc(perTxt)}</th><th class="n">Ofertas enviadas · ${esc(perTxt)}</th><th class="n">En espera (hoy)</th>${P ? `<th class="n">Proyección ${esc(mnS)}</th>` : ''}</tr></thead><tbody>
+        ${F.map(f => `<tr data-glin="${f.k}" style="cursor:pointer${GLIN === f.k ? ';background:#eef5fc' : ''}"><td><b>${f.t}</b>${GLIN === f.k ? ' · <span style="color:#1f6feb">filtrando</span>' : ''}</td><td class="n">${clp(f.v)} (${f.nv})</td><td class="n">${clp(f.e)} (${f.ne})</td><td class="n">${clp(f.w)} (${f.nw})</td>${P ? `<td class="n">${clp(f.pj)}</td>` : ''}</tr>`).join('')}
+        <tr style="font-weight:700"><td>Σ Total global</td><td class="n">${clp(T.v)}</td><td class="n">${clp(T.e)}</td><td class="n">${clp(T.w)}</td>${P ? `<td class="n">${clp(T.pj)}</td>` : ''}</tr></tbody></table></div><div class="cap noprint" style="margin:-6px 0 10px">Pinche una línea para ver solo esa línea en las tarjetas y listas de abajo${GLIN ? ' (pinche de nuevo para ver todo)' : ''}.</div>`; })()}
     <div class="kpis" style="margin-bottom:10px">
       <div class="kpi ok" data-d="gest:adj" tabindex="0" role="button"><div class="lab">Vendido (adjudicado) · ${esc(perTxt)}</div><div class="val">${clp(vend)}</div><div class="note">${adj.length} adjudicación(es)${vend !== base ? ` · incluye ${mm(vend - base)} en prórrogas` : ''}<div class="more">Ver detalle ›</div></div></div>
       <div class="kpi" data-d="gest:env" tabindex="0" role="button"><div class="lab">Ofertas enviadas · ${esc(perTxt)}</div><div class="val">${clp(sum(env, l => +l.oferta))}</div><div class="note">${env.length} oferta(s)<div class="more">Ver detalle ›</div></div></div>
@@ -784,6 +793,7 @@ function renderGestion() {
     des: {t: 'Desistidas', s: 'Procesos en que Terracop no presentó oferta (todo el registro)', r: L.filter(l => l.est === 'desistida')},
     all: {t: 'Todas las licitaciones y ofertas', s: `${L.length} procesos del registro comercial, del más reciente al más antiguo`, r: L.slice()}};
   $('gPer').value = GPER; $('gPer').onchange = () => { GPER = $('gPer').value; renderGestion(); };
+  box.querySelectorAll('[data-glin]').forEach(tr => tr.onclick = e => { if (e.target.closest('td.n')) return; GLIN = GLIN === tr.dataset.glin ? '' : tr.dataset.glin; renderGestion(); });
 }
 /* ===== MAPA DE MAQUINARIA EN ARRIENDO (mismo bloque en app.html e index.html) ===== */
 const MQ_FAM = [['martillo', /martillo|accesorio|ripper|placa compactadora|chancador/], ['aljibe', /aljibe|cisterna|estanque/], ['excavadora', /excavadora|excavator/],
@@ -912,7 +922,7 @@ async function loadLive() {
     render({file: 'datos en vivo de la app de gestión', loaded: nowTxt(new Date()), data});
     renderGestion();
     try { UBIC = await api('rpc/ubicacion_maquinaria', {method: 'POST', body: '{}'}); } catch (e) { if (e.message === 'SESSION') throw e; UBIC = null; }
-    renderUbic();
+    renderUbic(); try { renderGestion(); } catch (e) {}
     if ($('msg').textContent === 'Cargando datos…') $('msg').innerHTML = '';
     return true;
   } catch (e) {
