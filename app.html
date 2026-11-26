@@ -1601,7 +1601,7 @@ function asistenteEquipo() {
   const diasDef = () => { const q = num(val('wQ')) || 0, u = val('wU'), tu = val('wTu'), hd = num(val('wHd')) || 6; if (u === 'día') return q; if (u === 'hm' && q < P('horas_mes', 180)) return Math.ceil(q / hd); const meses = u === 'hm' ? q / P('horas_mes', 180) : q; return Math.round(meses * (tu === '5x2' ? 22 : 30)); };
   const calc = () => {
     try {   // seguridad: con cobro por día, el mínimo y la jornada siguen al turno (5x2 = 22 días) mientras no se escriban a mano
-      const dmT = val('wTu') === '5x2' ? 22 : 30;
+      const dmT = 30;
       if (!hdTocada) { const hdN = jornadaTurno(); if (Math.abs((num(val('wHd')) || 0) - hdN) > 0.05) $('wHd').value = nf(hdN, 1); }
       if (val('wU') === 'día' && !minTocada && num(val('wMin')) !== dmT) { $('wMin').value = dmT; qAuto(); desc(); }
     } catch (e) {}
@@ -1642,9 +1642,9 @@ function asistenteEquipo() {
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>
-      ${(() => { const hd = num(val('wHd')) || 6, dm = val('wTu') === '5x2' ? 22 : 30, hmes = hd * dm;   // equivalencias del precio
-        const ph = u === 'hm' ? precio : u === 'día' ? precio / hd : precio / hmes, pd = ph * hd, pm = ph * hmes;
-        return `<div class="msg info small" style="margin:6px 0 0">💱 <b>El precio equivale a:</b> ${clp(Math.round(ph))} por hora · ${clp(Math.round(pd))} por día (jornada de ${nf(hd, 1)} h) · <b>${clp(Math.round(pm))} por mes</b> (${dm} días · turno ${esc(val('wTu'))})</div>`; })()}`;
+      ${(() => { const hd = num(val('wHd')) || 6, mn = num(val('wMin')) || (u === 'hm' ? P('horas_mes', 180) : u === 'día' ? 30 : 1);   // equivalencias del precio (el mes = mínimo mensual)
+        const pm = u === 'hm' ? precio * mn : u === 'día' ? precio * mn : precio * mn, ph = u === 'hm' ? precio : u === 'día' ? precio / hd : precio / P('horas_mes', 180), pd = u === 'día' ? precio : u === 'hm' ? precio * hd : precio / 30;
+        return `<div class="msg info small" style="margin:6px 0 0">💱 <b>El precio equivale a:</b> ${clp(Math.round(ph))} por hora · ${clp(Math.round(pd))} por día · <b>${clp(Math.round(pm))} por mes</b> (${u === 'hm' ? nf(mn) + ' h mínimas' : u === 'día' ? nf(mn) + ' días' : nf(mn) + ' mes'})${u === 'hm' ? ' · horas sobre el mínimo, a la misma tarifa' : ''}</div>`; })()}`;
   };
   // conversión entre unidades: 1 mes = 30 días = horas_mes hm
   // conversión: 1 mes = 30 días (calendario) · 1 día = horas por día (jornada) · 1 mes = horas_mes hm
@@ -1674,16 +1674,16 @@ function asistenteEquipo() {
     horoAviso(true); unidad(); $('wD').placeholder = diasDef(); calc(); };
   // equipos que no llevan horómetro (camión, aljibe, camioneta, pluma): se cotizan por día de jornada, controlado con el report diario
   let porHoraIgual = false, hdTocada = false, minTocada = false;
-  function jornadaTurno() { const t5 = val('wTu') === '5x2'; const h = t5 ? P('jornada_5x2', 8) : Math.round(P('horas_mes', 180) / 30 * 10) / 10; if ($('wHdl')) $('wHdl').textContent = t5 ? 'Horas por día (jornada 5x2: 8 h)' : `Horas por día (${nf(h, 1)} = ${P('horas_mes', 180)} h ÷ 30 días)`; return h; }
-  const sinHoro = () => { const T = t(); return T && ['camion', 'aljibe', 'camioneta', 'grua'].includes(mqFam(T.nombre)); };
-  const diasMes = () => val('wTu') === '5x2' ? 22 : 30;
+  function jornadaTurno() { const h = Math.round(P('horas_mes', 180) / 30 * 10) / 10; if ($('wHdl')) $('wHdl').textContent = `Horas por día (${nf(h, 1)} = ${P('horas_mes', 180)} h mínimas ÷ 30 días)`; return h; }
+  const sinHoro = () => { const T = t(); return !!T && (/tracto/i.test(T.nombre) || mqFam(T.nombre) === 'martillo'); };   // regla Terracop: todo lleva horómetro salvo martillo/accesorios y tractocamiones
+  const diasMes = () => 30;   // sin horómetro se cobran 30 días corridos (el equipo queda en poder del cliente), aunque el turno sea 5x2
   function horoAviso(nuevoTipo) {
     if (nuevoTipo) porHoraIgual = false;
     if (!hdTocada) $('wHd').value = nf(jornadaTurno(), 1);   // jornada según turno (5x2 = 8 h); se puede cambiar a mano
     if (sinHoro() && !porHoraIgual) {
       if (val('wU') !== 'día') { $('wU').value = 'día'; qTocada = false; minTocada = false; }
       qAuto();
-      $('wHoro').innerHTML = `<div class="msg small" style="margin:6px 0;background:#fff4dc;border:1px solid #f0c36d;color:#6b4a00">🚚 <b>Este equipo no lleva horómetro</b> (usa odómetro). La app lo cotiza <b>por día de jornada</b>, con mínimo de <b>${diasMes()} días al mes</b> (turno ${esc(val('wTu'))}), controlado con el <b>report diario</b> firmado por el cliente. <a href="#" id="wHoraIgual">Cotizarlo por hora igual</a></div>`;
+      $('wHoro').innerHTML = `<div class="msg small" style="margin:6px 0;background:#fff4dc;border:1px solid #f0c36d;color:#6b4a00">🚚 <b>Este equipo no lleva horómetro.</b> La app lo cotiza <b>por día</b>, con <b>30 días corridos al mes</b> aunque el turno sea ${esc(val('wTu'))}: el equipo queda en poder del cliente también los fines de semana. Se controla con las fechas de entrega y retiro. <a href="#" id="wHoraIgual">Cotizarlo por hora igual</a></div>`;
       $('wHoraIgual').onclick = e => { e.preventDefault(); porHoraIgual = true; $('wU').value = 'hm'; qTocada = false; minTocada = false; $('wHoro').innerHTML = '<div class="small muted" style="margin:6px 0">Cotizado por hora: se controla con las horas de inicio y término del report diario (no hay horómetro).</div>'; unidad(); $('wD').placeholder = diasDef(); calc(); };
     } else if (!sinHoro()) $('wHoro').innerHTML = '';
     qAuto();
@@ -1701,7 +1701,7 @@ function asistenteEquipo() {
   $('wHd').addEventListener('input', () => { hdTocada = true; });
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
   ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wAj', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
-  $('wU').onchange = () => { minTocada = false; qTocada = false; unidad(); $('wD').placeholder = diasDef(); opDef(); calc(); };
+  $('wU').onchange = () => { minTocada = false; qTocada = false; try { if (sinHoro()) { porHoraIgual = val('wU') !== 'día'; if (porHoraIgual) $('wHoro').innerHTML = '<div class="small muted" style="margin:6px 0">Cotizado por ' + (val('wU') === 'hm' ? 'hora: se controla con las horas de inicio y término del report diario (no hay horómetro).' : 'mes.') + '</div>'; else horoAviso(false); } } catch (e) {} unidad(); $('wD').placeholder = diasDef(); opDef(); calc(); };
   let opManual = false;
   const opDef = () => { if (opManual) return; const tu = val('wTu'), rotativo = !['5x2', 'libre'].includes(tu), q = num(val('wQ')) || 0, u = val('wU');
     const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6), mesOmas = u === 'mes' || hrs >= P('horas_mes', 180) || (num(val('wD')) || diasDef()) >= 30;
@@ -2008,6 +2008,7 @@ function textosBase(c, S, minera) {
   T.alcance = `<p>De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el siguiente alcance de servicio:</p><ol type="a">${al.map(x => `<li>${x}</li>`).join('')}</ol>`;
   const ap = [];
   if (S.co === 'mandante') ap.push('Combustible y AdBlue para la operación diaria de los equipos, suministrado en el punto de trabajo.');
+  if (!minera && !mantIncluida(c)) ap.push('Elementos de desgaste de los equipos (dientes, puntas, cuchillas, cantoneras y similares), por cuenta del mandante.');
   if (S.op && S.alim === 'terracop' && S.aj === 'mandante') ap.push('Alojamiento en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación será aportada por Terracop, previo a los cambios de turno.');
   if (S.op && S.alim === 'mandante' && S.aj !== 'mandante') ap.push('Alimentación en faena para el personal de Terracop asociado al servicio.');
   if (S.op && S.al === 'mandante') ap.push('Alimentación y estadía en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación con el campamento será aportada por Terracop, previo a los cambios de turno.');
@@ -2032,8 +2033,8 @@ function textosBase(c, S, minera) {
   const notas = [];
   if (S.mixto) notas.push('La tarifa de cada equipo considera el periodo de arriendo y el mínimo mensual indicados en el alcance, cobrados mediante estado de pago mensual.');
   else if (S.dias) notas.push(`La tarifa indicada considera un periodo de arriendo de ${V('dias')} días${cont}${S.minMes ? minTxt(S.uMin, S.minMes).replace(/^, /, ' ') + ' por equipo' : S.horas ? ` con un mínimo de ${V('horas')} horas máquina por equipo` : ''}.`);
-  if (S.horas) notas.push('Las horas trabajadas sobre el mínimo se cobrarán a la misma tarifa unitaria.');
-  if (S.uDia === 'día' || S.lista.some(g => g.u === 'día')) notas.push('Los equipos cobrados por día se controlan mediante el report diario de jornada firmado por el mandante.');
+  if (S.horas || S.lista.some(g => g.u === 'hm')) notas.push(`Los equipos con horómetro se cobran por horas máquina según su horómetro, con un mínimo de ${S.minMes && S.uMin === 'hm' ? nf(S.minMes) : nf(P('horas_mes', 180))} horas mensuales por equipo, aunque se trabajen menos. Las horas trabajadas sobre el mínimo se cobran a la misma tarifa unitaria.`);
+  if (S.uDia === 'día' || S.lista.some(g => g.u === 'día')) notas.push('Los equipos sin horómetro (tractocamiones, martillo y accesorios) se cobran por días corridos, desde su entrega hasta su retiro, independiente del turno de trabajo (por ejemplo, en turno 5x2 se cobran los 30 días del mes, ya que el equipo permanece en poder del mandante).');
   const notaCot = (c.nota || '').trim(); if (notaCot && !/^Los valores indicados son netos y no incluyen IVA\.\s*\nValidez de la oferta: \d+ días\.?$/.test(notaCot)) notaCot.split('\n').filter(Boolean).forEach(l => notas.push(esc(l)));
   T.notas = notas.length ? `<p><b>Nota:</b></p><ol>${notas.map(x => `<li>${x}</li>`).join('')}</ol>` : '<p></p>';
   const cg = [];
