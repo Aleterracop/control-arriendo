@@ -839,6 +839,14 @@ function zipStore(files, type) {
   return new Blob([...parts, ...cen, end], {type});
 }
 
+
+/* fechas que no se cruzan: períodos y EDP de un mismo arriendo */
+function cruceFechas(lista, desde, hasta, idExcl) {
+  if (!desde) return null;
+  const fin = x => x || '9999-12-31';
+  return lista.find(x => x.id !== idExcl && x.desde && x.desde <= fin(hasta) && desde <= fin(x.hasta)) || null;
+}
+const txtRango = x => `${fd(x.desde)} al ${x.hasta ? fd(x.hasta) : 'abierto'}`;
 function formPeriodo(a, p) {
   modal(`<h3>Período ${p.n} · ${esc(a.descripcion)}</h3><div class="f">
     <div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="pC" inputmode="decimal" value="${p.cantidad ?? ''}"></div>
@@ -851,7 +859,13 @@ function formPeriodo(a, p) {
     <div class="mf"><button class="dan" id="pDel">Eliminar</button><span class="sp"></span><button id="pCan">Cancelar</button><button class="pri" id="pOk">Guardar</button></div>`);
   $('pCan').onclick = closeModal;
   $('pDel').onclick = () => { if (confirm('¿Eliminar este período?')) guardar(() => del('periodos', p.id), 'Período eliminado'); };
-  $('pOk').onclick = () => guardar(() => upd('periodos', p.id, {cantidad: num(val('pC')), tarifa: num(val('pT')), desde: val('pD') || null, hasta: val('pH') || null, estado: val('pO') ? 'con_oc' : val('pE'), oc: val('pO') || null, notas: val('pN') || null}), 'Período guardado');
+  $('pOk').onclick = () => {
+    const d = val('pD') || null, h = val('pH') || null, otros = calc(a).pers;
+    if (d && h && h < d) return alert('La fecha "Hasta" no puede ser anterior a "Desde".');
+    const x = cruceFechas(otros.filter(o => o.hasta || o.n > p.n), d, h, p.id);
+    if (x) return alert(`Las fechas se cruzan con el período ${x.n} (${txtRango(x)}).\n\nCada período debe partir el día siguiente al término del anterior. Corrija las fechas.`);
+    guardarPer(); };
+  const guardarPer = () => guardar(() => upd('periodos', p.id, {cantidad: num(val('pC')), tarifa: num(val('pT')), desde: val('pD') || null, hasta: val('pH') || null, estado: val('pO') ? 'con_oc' : val('pE'), oc: val('pO') || null, notas: val('pN') || null}), 'Período guardado');
 }
 
 /* prórroga con OC → venta en el registro comercial (Gestión) */
@@ -866,18 +880,28 @@ async function regProrroga(a, p) {
 }
 function formProrroga(a) {
   const c = calc(a), lastP = c.pers[c.pers.length - 1];
-  const desde = a.fecha_fin ? addDays(a.fecha_fin, 1) : todayISO();
+  const desde = lastP && lastP.hasta ? addDays(lastP.hasta, 1) : a.fecha_fin ? addDays(a.fecha_fin, 1) : todayISO();
   modal(`<h3>Prorrogar · ${esc(a.descripcion)}</h3>
     <p class="small muted">Crea el período ${(lastP ? lastP.n : 0) + 1}. Queda <b>adjudicado sin OC</b> hasta que registre la OC; los horómetros siguen sumando.</p>
     <div class="f"><div><label>Cantidad (${unidadMod(a.modalidad)})</label><input id="rC" inputmode="decimal" value="${a.modalidad === 'global' ? 1 : c.base}"></div>
     <div><label>Tarifa</label><input id="rT" inputmode="numeric" value="${a.tarifa ?? ''}"></div>
     <div><label>Desde</label><input type="date" id="rD" value="${desde}"></div>
-    <div><label>Hasta</label><input type="date" id="rH" value="${addDays(desde, a.modalidad === 'dia' ? c.base - 1 : 29)}"></div>
+    <div><label>Hasta ${a.modalidad === 'hora' ? '(déjelo vacío: por hora lo marcan las horas)' : ''}</label><input type="date" id="rH" value="${a.modalidad === 'hora' ? '' : addDays(desde, a.modalidad === 'dia' ? c.base - 1 : 29)}"></div>
     <div><label>N° OC (si ya llegó)</label><input id="rO"></div></div>
+    ${lastP && !lastP.hasta ? `<div class="small" style="margin-top:6px;color:#1f4e79">El período ${lastP.n} quedará cerrado el día anterior al "Desde" de esta prórroga, para que las fechas no se crucen.</div>` : ''}
     <div class="mf"><button id="rCan">Cancelar</button><button class="pri" id="rOk">Crear prórroga</button></div>`);
   $('rCan').onclick = closeModal;
-  $('rOk').onclick = () => guardar(async () => {
+  $('rOk').onclick = () => {
+    const d = val('rD'), h = val('rH') || null;
+    if (!d) return alert('Indique la fecha "Desde" de la prórroga.');
+    if (h && h < d) return alert('La fecha "Hasta" no puede ser anterior a "Desde".');
+    if (lastP && lastP.desde && d <= lastP.desde) return alert(`La prórroga debe partir después del inicio del período ${lastP.n} (${fd(lastP.desde)}).`);
+    const x = cruceFechas(c.pers.filter(o => o.hasta), d, h, null);
+    if (x) return alert(`Las fechas se cruzan con el período ${x.n} (${txtRango(x)}). La prórroga debe partir el ${fd(addDays(x.hasta, 1))} o después.`);
+    crearPr(); };
+  const crearPr = () => guardar(async () => {
     const oc = val('rO');
+    if (lastP && !lastP.hasta) await upd('periodos', lastP.id, {hasta: addDays(val('rD'), -1)});   // cierra el período anterior
     const np = await ins('periodos', {arriendo_id: a.id, n: (lastP ? lastP.n : 0) + 1, tipo: 'prorroga', cantidad: num(val('rC')), tarifa: num(val('rT')), desde: val('rD') || null, hasta: val('rH') || null, estado: oc ? 'con_oc' : 'palabra', oc: oc || null});
     if (oc && np) await regProrroga(a, np);
     await upd('arriendos', a.id, {fecha_fin: val('rH') || a.fecha_fin});
@@ -964,6 +988,10 @@ function formEdp(a, e, final) {
     else Object.assign(o, {hes_estado: 'no_aplica', aprobacion: val('eAp') || null});
     if (o.estado !== 'borrador' && !o.oc && !confirm('Este EDP no tiene N° de OC. ¿Guardar igual?')) return;
     if (nuevo && c.edps.some(x => x.n === o.n)) return alert('Ya existe un EDP con ese número.');
+    if (!nuevo && c.edps.some(x => x.n === o.n && x.id !== e.id)) return alert('Ya existe otro EDP con ese número.');
+    if (o.desde && o.hasta && o.hasta < o.desde) return alert('La fecha "Hasta" no puede ser anterior a "Desde".');
+    const xe = cruceFechas(c.edps, o.desde, o.hasta, nuevo ? null : e.id);
+    if (xe) return alert(`Las fechas se cruzan con el EDP N° ${xe.n} (${txtRango(xe)}).\n\nEste EDP debe partir el ${xe.hasta ? fd(addDays(xe.hasta, 1)) : 'día siguiente al término del anterior'} o después, para no cobrar dos veces los mismos días u horas.`);
     guardar(() => nuevo ? ins('edps', o) : upd('edps', e.id, o), 'EDP guardado');
   };
 }
