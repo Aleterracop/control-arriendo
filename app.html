@@ -1583,7 +1583,8 @@ function asistenteEquipo() {
     <div><label>Operadores por equipo</label><select id="wNo"><option value="1">1 operador</option><option value="2">2 operadores (en rotación)</option></select></div>
     <div><label>Pago de los operadores</label><select id="wPg"><option value="mes">Mes completo cada uno</option><option value="horas">Horas repartidas entre ellos</option></select></div>
     <div><label>Días en faena</label><input id="wD" inputmode="numeric"></div>
-    <div><label>Alimentación y alojamiento</label><select id="wAl"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
+    <div><label>Alimentación de los operadores</label><select id="wAl"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
+    <div><label>Alojamiento de los operadores</label><select id="wAj"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option><option value="no">No aplica (viajan a diario)</option></select></div>
     <div><label>Combustible</label><select id="wCo"><option value="mandante">Aporte del mandante</option><option value="terracop">Por cuenta de Terracop</option></select></div>
     <div><label>Movilización $ por viaje</label><input id="wMv" inputmode="numeric" placeholder="0 = sin movilización"></div>
     <div><label>Utilidad %</label><input id="wUt" inputmode="decimal" value="${nf((COT.utilidad ?? P('utilidad', 0.2)) * 100, 2)}"></div>
@@ -1606,11 +1607,12 @@ function asistenteEquipo() {
     $('wConv').innerHTML = (enUF ? `Costo del equipo: ${nf(tar, 2)} UF × ${clp(ufv)} (valor UF) = <b>${clp(tar$)} / ${esc(u)}</b> neto. El IVA del proveedor no es costo (se recupera como crédito fiscal).` : $('wConv').innerHTML);
     if (T) rows.push({c: (sub ? `Arriendo ${T.nombre} a ${val('wProv') || 'proveedor'}` : 'Equipo ' + T.nombre) + (enUF ? ` (${nf(tar, 2)} UF)` : ''), u, q: q * n, p: tar$});
     // 7x7 / 14x14 continuo (un mes o más): 2 operadores en rotación, cada uno con el mes completo pagado
-    $('wNo').parentElement.hidden = $('wPg').parentElement.hidden = $('wAl').parentElement.hidden = !o;   // sin operador: no aplican operadores, su pago ni su alimentación
+    $('wNo').parentElement.hidden = $('wPg').parentElement.hidden = $('wAl').parentElement.hidden = $('wAj').parentElement.hidden = !o;   // sin operador: no aplican operadores, su pago ni su alimentación
     const nOp = +val('wNo') || 1, pagoMes = val('wPg') === 'mes', rot = nOp === 2 && pagoMes ? 2 : 1;
     if (o) rows.push({c: o.cargo + (nOp === 2 ? (pagoMes ? ` × 2 (turno ${val('wTu')}: 2 operadores en rotación, cada uno con su mes completo)` : ` (turno ${val('wTu')}: 2 operadores en rotación, horas repartidas entre ambos)`) : ` (turno ${val('wTu')}: 1 operador)`), u: 'HH', q: hrs * n * rot, p: Math.round(+o.valor_hh || 0)});
     $('wOpInfo').innerHTML = o ? `👷 <b>${nOp * n} operador(es) en total</b> (${nOp} por equipo × ${n} equipo(s)). ${nOp === 2 ? `En faena hay 1 operador por equipo a la vez, así que la alimentación y el alojamiento se calculan para ${n} persona(s) por día. ` : ''}No agregue otro operador en el 🧮: ya está incluido aquí.` : '';
-    if (o && val('wAl') === 'terracop') { rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('alimentacion', P('almuerzo', 12000) + P('colacion', 5000))}); rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)}); }
+    if (o && val('wAl') === 'terracop') rows.push({c: 'Alimentación (almuerzo + colación)', u: 'pers-día', q: d * n, p: P('alimentacion', P('almuerzo', 12000) + P('colacion', 5000))});
+    if (o && val('wAj') === 'terracop') rows.push({c: 'Alojamiento', u: 'pers-día', q: d * n, p: P('alojamiento', 10000)});
     if (T && val('wCo') === 'terracop' && +T.consumo_lh) rows.push({c: `Petróleo diésel (${nf(T.consumo_lh)} l/h)`, u: 'litro', q: Math.round(T.consumo_lh * hrs * n), p: P('diesel', 1500)});
     const rc = (num(val('wRc')) || 0) / 100;
     const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, sugerido = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
@@ -1631,7 +1633,7 @@ function asistenteEquipo() {
         if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
         if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
     }
-    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), operadores: +val('wNo') || 1, dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null, min_mes: num(val('wMin')) || null, plazo: num(val('wPl')) || null, plazo_u: val('wPlU')}};
+    res = {rows, cu, precio, cant, u, meta: {turno: val('wTu'), operadores: +val('wNo') || 1, dias: d, hd: num(val('wHd')) || 6, op: !!o, al: val('wAl') === 'terracop' ? (val('wAj') === 'terracop' ? 'terracop' : val('wAj') === 'no' ? 'alim' : 'alim_aj_m') : (val('wAj') === 'terracop' ? 'aloj' : val('wAj') === 'no' ? 'mandante_noaj' : 'mandante'), alim: val('wAl'), aj: val('wAj'), co: val('wCo'), equipos: n, horas_equipo: u === 'hm' ? q : null, min_mes: num(val('wMin')) || null, plazo: num(val('wPl')) || null, plazo_u: val('wPlU')}};
     const utilT = (precio - cu) * cant;
     $('wR').innerHTML = `<div class="kpis" style="margin:0"><div class="kpi"><div class="l">Costo total</div><div class="v">${clp(tot)}</div></div><div class="kpi"><div class="l">Costo / ${esc(u)}</div><div class="v">${clp(cu)}</div></div><div class="kpi"><div class="l">Precio sugerido / ${esc(u)}</div><div class="v">${clp(sugerido)}</div></div><div class="kpi g"><div class="l">Precio a cobrar / ${esc(u)}</div><div class="v">${clp(precio)}</div></div><div class="kpi"><div class="l">Total neto ítem</div><div class="v">${clp(precio * cant)}</div></div><div class="kpi ${utilT < 0 ? 'r' : 'g'}"><div class="l">Utilidad</div><div class="v" style="white-space:normal">${clp(utilT)} · ${precio ? nf((1 - cu / precio) * 100) : 0}%</div></div></div>
       <div class="small muted" style="margin-top:4px">${rows.map(r => `${esc(r.c)}: ${nf(r.q)} ${esc(r.u)} × ${clp(r.p)}`).join(' · ')}</div>
@@ -1692,7 +1694,7 @@ function asistenteEquipo() {
   $('wTu').addEventListener('change', () => { horoAviso(false); unidad(); desc(); $('wD').placeholder = diasDef(); calc(); });
   $('wHd').addEventListener('input', () => { hdTocada = true; });
   $('wHd').oninput = () => { if (tarCat && val('wU') !== uCat) unidad(); calc(); };
-  ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
+  ['wTa', 'wN', 'wO', 'wTu', 'wD', 'wAl', 'wAj', 'wCo', 'wUt', 'wRc', 'wP'].forEach(k => $(k).oninput = $(k).onchange = () => { if (k === 'wO') desc(); $('wD').placeholder = diasDef(); calc(); });
   $('wU').onchange = () => { minTocada = false; qTocada = false; unidad(); $('wD').placeholder = diasDef(); opDef(); calc(); };
   let opManual = false;
   const opDef = () => { if (opManual) return; const tu = val('wTu'), rotativo = !['5x2', 'libre'].includes(tu), q = num(val('wQ')) || 0, u = val('wU');
@@ -1913,14 +1915,17 @@ function nombreEquipos(nombre, n) {   // "excavadora 320" → "una excavadora 32
 /* Datos del servicio leídos desde los ítems (con lo que guardó el asistente, o deducidos del APU) */
 function datosServicio(c) {
   const its = (c.items || []).filter(i => i.tipo === 'i' && !i.oculto), eq = its.filter(i => !/moviliz|flete|traslado/i.test(i.desc || '') && (i.equipo_tipo_id || /arriendo|excavadora|bulldozer|cargador|retro|motoniveladora|rodillo|cami[oó]n/i.test(i.desc || '')));
-  const grupos = {}; let op = false, sinOp = false, al = null, co = null, turno = null, dias = 0, horas = null, uDia = null;
+  const grupos = {}; let op = false, sinOp = false, al = null, alim = null, aj = null, co = null, turno = null, dias = 0, horas = null, uDia = null;
   eq.forEach(it => {
     const m = it.meta || {}, T = it.equipo_tipo_id ? byId('equipo_tipos', it.equipo_tipo_id) : null, apu = it.apu || [];
     const nEq = m.equipos || 1, nom = T ? T.nombre : (it.desc || 'equipo').replace(/^arriendo de\s*/i, '').replace(/\s+(o similar|con operador|por|con)\b.*$/i, '');
     const g = grupos[nom.toLowerCase()] = (grupos[nom.toLowerCase()] || {nombre: nom, n: 0, dias: 0, u: it.unidad, minMes: null, op: false}); g.n += nEq;
     const tieneOp = m.op ?? (/operador/i.test(it.desc || '') || apu.some(r => /operador|conductor/i.test(r.c || '')));
     if (tieneOp) { op = true; g.op = true; } else sinOp = true;
-    const alI = m.al || (apu.some(r => /alimentaci|alojamiento/i.test(r.c || '')) ? 'terracop' : null); if (alI) al = al === 'terracop' ? al : alI;
+    const alimI = m.alim || (['terracop', 'alim', 'alim_aj_m'].includes(m.al) ? 'terracop' : m.al ? 'mandante' : apu.some(r => /alimentaci/i.test(r.c || '')) ? 'terracop' : null);
+    const ajI = m.aj || (m.al === 'terracop' || m.al === 'aloj' ? 'terracop' : m.al === 'alim' || m.al === 'mandante_noaj' ? 'no' : m.al ? 'mandante' : apu.some(r => /alojamiento/i.test(r.c || '')) ? 'terracop' : null);
+    if (tieneOp && alimI) alim = alim === 'terracop' ? alim : alimI;
+    if (tieneOp && ajI) aj = aj === 'terracop' ? aj : aj === 'mandante' && ajI === 'no' ? aj : ajI;
     const coI = m.co || (apu.some(r => /di[eé]sel|petr[oó]leo|combustible/i.test(r.c || '')) ? 'terracop' : null); if (coI) co = co === 'terracop' ? co : coI;
     if (m.turno && !turno) turno = m.turno;
     let d = m.dias; if (!d) { const ra = apu.find(r => /alimentaci/i.test(r.c || '')); if (ra) d = Math.round((+ra.q || 0) / nEq); }
@@ -1934,7 +1939,8 @@ function datosServicio(c) {
   const lista = Object.values(grupos), CAM = /camioneta|veh[ií]culo|4x4/i;
   const cam = (c.items || []).some(i => i.tipo === 'i' && (CAM.test(i.desc || '') || (i.apu || []).some(r => CAM.test(r.c || ''))));
   const mixto = new Set(lista.map(g => g.dias + '|' + g.u)).size > 1, minMes = lista.length && lista.every(g => g.minMes && g.minMes === lista[0].minMes && g.u === lista[0].u) ? lista[0].minMes : null;
-  return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, opMix: op && sinOp, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov, mixto, minMes, uMin: lista.length ? lista[0].u : null};
+  alim = alim || 'mandante'; aj = aj || 'mandante'; al = alim === 'terracop' && aj === 'terracop' ? 'terracop' : alim === 'terracop' && aj === 'no' ? 'alim' : alim === 'mandante' && aj === 'mandante' ? 'mandante' : 'mix';
+  return {cam, lista, nTotal: lista.reduce((t, g) => t + g.n, 0), op, opMix: op && sinOp, alim, aj, al: al || 'mandante', co: co || 'mandante', turno, dias: Math.round(dias), horas: horas ? Math.round(horas) : null, uDia, mov, mixto, minMes, uMin: lista.length ? lista[0].u : null};
 }
 const TURNOTXT = {libre: 'en jornada diurna con horario libre', '8x6': 'en turno de trabajo continuo en jornada diurna', '4x4': 'en turno de trabajo continuo en jornada diurna 4x4', '10x10': 'en turno de trabajo continuo en jornada diurna 10x10', '14x14': 'en turno de trabajo continuo en jornada diurna 14x14', '7x7': 'en turno de trabajo continuo en jornada diurna 7x7', '5x2': 'en jornada de lunes a viernes (turno 5x2)'};
 /* valores que se actualizan solos dentro de los textos (span data-v) */
@@ -1971,14 +1977,20 @@ function textosBase(c, S, minera) {
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
   if (mantIncluida(c)) al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
   else al.push(`La mantención preventiva cada 250 horas máquina será realizada por el equipo de mantenimiento de Terracop en faena. Su costo, que considera el mecánico y su traslado de ida y vuelta a faena en vehículo de apoyo, será de cargo del mandante, con un valor de ${clp(P('mantencion_250', 1500000))} + IVA por cada mantención.`);
+  if (S.op && S.al === 'alim') al.push('Se considera la alimentación de los operadores durante la jornada, por cuenta de Terracop. No se considera alojamiento: los operadores se trasladan diariamente desde su lugar de residencia.');
+  if (S.op && S.alim === 'terracop' && S.aj === 'mandante') al.push('Se considera la alimentación de los operadores, por cuenta de Terracop.');
+  if (S.op && S.alim === 'mandante' && S.aj === 'terracop') al.push('Se considera el alojamiento de los operadores, por cuenta de Terracop.');
+  if (S.op && S.alim === 'mandante' && S.aj === 'no') al.push('No se considera alojamiento: los operadores se trasladan diariamente desde su lugar de residencia.');
   if (S.op && S.al === 'terracop') al.push(S.cam ? 'Se considera la alimentación y el alojamiento de los operadores, por cuenta de Terracop.' : 'Se considera la alimentación, el alojamiento y el traslado de los operadores hasta el área de trabajo, por cuenta de Terracop.');
   if (S.cam) al.push(`Se considera como alcance del servicio el aporte de Terracop de un vehículo 4x4 equipado para las labores en cuestión, para el traslado del personal desde <mark class="cpfal">[lugar de origen]</mark> hasta ${V('faena')}.`);
-  else if (S.op && S.al !== 'terracop') al.push('Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
+  else if (S.op && S.aj === 'mandante') al.push('Se considera como alcance del servicio el transporte de los operadores en faena, desde el campamento hasta el área de trabajo.');
   if (S.mov) al.push(`Se considera la movilización y desmovilización de los equipos hasta ${V('faena')}.`);
   al.push('Se considera disponibilidad de los equipos previa coordinación del inicio del servicio con el mandante.');
   T.alcance = `<p>De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el siguiente alcance de servicio:</p><ol type="a">${al.map(x => `<li>${x}</li>`).join('')}</ol>`;
   const ap = [];
   if (S.co === 'mandante') ap.push('Combustible y AdBlue para la operación diaria de los equipos, suministrado en el punto de trabajo.');
+  if (S.op && S.alim === 'terracop' && S.aj === 'mandante') ap.push('Alojamiento en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación será aportada por Terracop, previo a los cambios de turno.');
+  if (S.op && S.alim === 'mandante' && S.aj !== 'mandante') ap.push('Alimentación en faena para el personal de Terracop asociado al servicio.');
   if (S.op && S.al === 'mandante') ap.push('Alimentación y estadía en faena para el personal de Terracop asociado al servicio. La información requerida para la coordinación con el campamento será aportada por Terracop, previo a los cambios de turno.');
   if ((!S.op || S.opMix) && !minera) {   // arriendo sin operador (en seco) a particulares: responsabilidades del mandante (no va en mineras grandes)
     ap.push('Lugar de resguardo de los equipos objeto de la presente oferta, cuando no estén en operación.');
