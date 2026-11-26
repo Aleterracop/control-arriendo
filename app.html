@@ -490,7 +490,7 @@ function vArriendos() {
 function opts(list, val, lab, ph) { return (ph != null ? `<option value="">${esc(ph)}</option>` : '') + list.map(x => `<option value="${x.id}" ${x.id === val ? 'selected' : ''}>${esc(lab(x))}</option>`).join(''); }
 function modal(html) { $('mbox').classList.remove('wide'); $('mbox').innerHTML = html; $('modal').hidden = false; }
 function closeModal() { $('modal').hidden = true; $('mbox').innerHTML = ''; }
-$('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+$('modal').addEventListener('click', e => { if (e.target.id === 'modal' && !$('mbox').querySelector('input, select, textarea')) closeModal(); });   // ventanas con formulario solo se cierran con sus botones (no al pinchar fuera)
 async function guardar(fn, okMsg) {
   try { await fn(); await loadAll(); closeModal(); go(); if (okMsg) toast(okMsg); }
   catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
@@ -1552,10 +1552,10 @@ function ultimoPrecio(T, excluirId) {
   const casa = d => { const n = normTxt(d); return pal.every(w => n.includes(w)); };
   const L = [];
   D.cotizaciones.filter(c => c.id !== excluirId && c.estado !== 'anulada').forEach(c => (c.items || []).forEach(it => {
-    if (it.tipo === 'i' && !it.oculto && +it.precio && (it.equipo_tipo_id === T.id || casa(it.desc))) L.push({precio: +it.precio, unidad: (it.unidad || '').toLowerCase(), fecha: c.fecha, origen: `Cot. ${nCot(c)}`, mand: c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '', estado: c.estado});
+    if (it.tipo === 'i' && !it.oculto && +it.precio && (it.equipo_tipo_id === T.id || casa(it.desc))) L.push({op: it.meta && it.meta.op != null ? !!it.meta.op : (/operador/i.test(it.desc || '') && !/sin operador/i.test(it.desc || '')), precio: +it.precio, unidad: (it.unidad || '').toLowerCase(), fecha: c.fecha, origen: `Cot. ${nCot(c)}`, mand: c.cliente || (byId('mandantes', c.mandante_id) || {}).nombre || '', estado: c.estado});
   }));
   D.arriendos.forEach(a => { const f = byId('flota', a.flota_id); if (+a.tarifa && ((f && f.tipo_id === T.id) || casa(a.descripcion)))
-    L.push({precio: +a.tarifa, unidad: {hora: 'hm', dia: 'día', mes: 'mes', global: 'gl'}[a.modalidad], fecha: a.fecha_inicio, origen: 'Arriendo ' + (a.cotizacion || ''), mand: mandante(a).nombre || '', estado: 'adjudicado'}); });
+    L.push({op: !!(a.operador && !/sin operador/i.test(a.operador)) || (/con operador/i.test(a.descripcion || '')), precio: +a.tarifa, unidad: {hora: 'hm', dia: 'día', mes: 'mes', global: 'gl'}[a.modalidad], fecha: a.fecha_inicio, origen: 'Arriendo ' + (a.cotizacion || ''), mand: mandante(a).nombre || '', estado: 'adjudicado'}); });
   return L.sort((x, y) => (y.fecha || '').localeCompare(x.fecha || ''));
 }
 
@@ -1577,7 +1577,7 @@ function asistenteEquipo() {
     <div><label>Plazo del arriendo</label><div class="row" style="flex-wrap:nowrap;gap:4px"><input id="wPl" inputmode="decimal" value="1"><select id="wPlU" style="width:auto"><option value="mes">meses</option><option value="día">días</option></select></div></div>
     <div><label id="wQl">Cantidad total a cotizar (horas)</label><input id="wQ" inputmode="decimal" value="180" title="Se calcula sola: mínimo mensual × plazo. Puede escribirla a mano."></div>
     <div><label>N° de equipos</label><input id="wN" inputmode="numeric" value="1"></div>
-    <div><label>Horas por día (6 = 180 h ÷ 30 días)</label><input id="wHd" inputmode="decimal" value="${nf(P('horas_dia', P('horas_mes', 180) / 30))}"></div>
+    <div><label id="wHdl">Horas por día (jornada)</label><input id="wHd" inputmode="decimal" value="${nf(P('horas_dia', P('horas_mes', 180) / 30))}"></div>
     <div><label>Operador</label><select id="wO"><option value="">Sin operador</option>${ops.map(p => `<option value="${p.id}">${esc(p.cargo)} · ${clp(p.valor_hh)}/HH</option>`).join('')}</select></div>
     <div><label>Turno</label><select id="wTu"><option value="5x2">5x2 (lun-vie)</option><option value="14x14" selected>14x14</option><option value="7x7">7x7</option><option value="4x4">4x4</option><option value="10x10">10x10</option><option value="8x6">8x6</option><option value="libre">Continuo · horario libre (1 operador)</option></select></div>
     <div><label>Operadores por equipo</label><select id="wNo"><option value="1">1 operador</option><option value="2">2 operadores (en rotación)</option></select></div>
@@ -1600,6 +1600,11 @@ function asistenteEquipo() {
   const t = () => byId('equipo_tipos', val('wT'));
   const diasDef = () => { const q = num(val('wQ')) || 0, u = val('wU'), tu = val('wTu'), hd = num(val('wHd')) || 6; if (u === 'día') return q; if (u === 'hm' && q < P('horas_mes', 180)) return Math.ceil(q / hd); const meses = u === 'hm' ? q / P('horas_mes', 180) : q; return Math.round(meses * (tu === '5x2' ? 22 : 30)); };
   const calc = () => {
+    try {   // seguridad: con cobro por día, el mínimo y la jornada siguen al turno (5x2 = 22 días) mientras no se escriban a mano
+      const dmT = val('wTu') === '5x2' ? 22 : 30;
+      if (!hdTocada) { const hdN = jornadaTurno(); if (Math.abs((num(val('wHd')) || 0) - hdN) > 0.05) $('wHd').value = nf(hdN, 1); }
+      if (val('wU') === 'día' && !minTocada && num(val('wMin')) !== dmT) { $('wMin').value = dmT; qAuto(); desc(); }
+    } catch (e) {}
     const T = t(), q = num(val('wQ')) || 0, n = num(val('wN')) || 1, u = val('wU'), tar = num(val('wTa')) || 0, o = byId('personal', val('wO')), d = num(val('wD')) ?? diasDef(), ut = (num(val('wUt')) || 0) / 100;
     const hrs = u === 'hm' ? q : u === 'mes' ? q * P('horas_mes', 180) : q * (num(val('wHd')) || 6);
     const rows = [];
@@ -1618,17 +1623,17 @@ function asistenteEquipo() {
     const tot = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0), cant = q * n, cu = cant ? tot / cant : 0, sugerido = Math.round(cu * (1 + (COT.gg ?? 0)) * (1 + ut) * (1 + rc));
     const precio = num(val('wP')) || sugerido;
     // referencia histórica
-    if (T) { const H = ultimoPrecio(T, COT.id), h = H.find(x => x.unidad === u) || H[0];
+    if (T) { const opNow = !!val('wO'), H0 = ultimoPrecio(T, COT.id), H = H0.filter(x => x.op === opNow), h = H.find(x => x.unidad === u) || H[0], opTxt = opNow ? 'con operador' : 'sin operador';
       if (h) { const pv = h.unidad === u ? h.precio : (['hm', 'día', 'mes'].includes(h.unidad) ? Math.round(conv(h.precio, h.unidad, u)) : null);
-        $('wRef').innerHTML = `<div class="msg info small" style="margin:0">📌 <b>Último precio cotizado:</b> ${clp(h.precio)} / ${esc(h.unidad)} · ${esc(h.origen)} · ${esc(h.mand)} · ${fd(h.fecha)} (${esc(h.estado)})${pv && h.unidad !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
+        $('wRef').innerHTML = `<div class="msg info small" style="margin:0">📌 <b>Último precio cotizado ${opTxt}:</b> ${clp(h.precio)} / ${esc(h.unidad)} · ${esc(h.origen)} · ${esc(h.mand)} · ${fd(h.fecha)} (${esc(h.estado)})${pv && h.unidad !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
           ${pv ? ` <button class="sm" id="wUseRef" style="margin-left:6px">Usar ${clp(pv)}</button>` : ''}${H.length > 1 ? `<div class="muted" style="margin-top:3px">Otros: ${H.slice(1, 4).map(x => `${clp(x.precio)}/${esc(x.unidad)} (${esc(x.origen)})`).join(' · ')}</div>` : ''}</div>`;
         if ($('wUseRef')) $('wUseRef').onclick = () => { $('wP').value = pv; calc(); }; }
-      else $('wRef').innerHTML = '<div class="small muted">Sin cotizaciones anteriores de este equipo.</div>';
+      else $('wRef').innerHTML = `<div class="small muted">Sin cotizaciones anteriores de este equipo ${opTxt}.${H0.length ? ` (Hay ${H0.length} ${opNow ? 'sin' : 'con'} operador, que no sirven de comparación.)` : ''}</div>`;
       const U = D.flota.filter(f => f.activo && f.tipo_id === T.id && (f.tarifa_lista || f.tarifa_lista_operador));
       if (U.length) { const conOp = !!val('wO'), key = conOp ? 'tarifa_lista_operador' : 'tarifa_lista', vals = [...new Set(U.map(f => +f[key]).filter(Boolean))];
         const uL = U[0].unidad_cobro === 'mes' ? 'mes' : 'hm', pv = vals.length ? Math.round(conv(vals[0], uL, u)) : null;
         $('wRef').innerHTML += `<div class="msg ok small" style="margin:6px 0 0">📋 <b>Tarifa de lista ${conOp ? 'con operador' : 'sin operador'}:</b> ${vals.length ? vals.map(v => clp(v)).join(' / ') + ' / ' + uL : 'sin valor'}${pv && uL !== u ? ` → equivale a <b>${clp(pv)} / ${esc(u)}</b>` : ''}
-          ${pv ? ` <button class="sm" id="wUseLista" style="margin-left:6px">Usar ${clp(pv)}</button>` : ''}
+          ${pv ? ` <button class="sm" id="wUseLista" style="margin-left:6px" title="Pone este valor como precio a cobrar al cliente. No cambia los costos (equipo, operador, alimentación, alojamiento).">Usar ${clp(pv)} como precio a cobrar</button><div class="muted" style="margin-top:3px">Solo cambia el <b>precio al cliente</b>; los costos (equipo, operador, alimentación) no cambian.${conOp ? ' La tarifa de lista con operador ya incluye equipo + operador.' : ''}</div>` : ''}
           <div class="muted" style="margin-top:3px">${U.map(f => `${esc(f.codigo)}${f.anio ? ' (' + f.anio + ')' : ''} ${{propio: 'propio', leasing: 'leasing', arriendo: 'terceros'}[propOf(f)]}`).join(' · ')}</div></div>`;
         if ($('wUseLista')) $('wUseLista').onclick = () => { $('wP').value = pv; calc(); };
         if ($('wUseRef')) { const hh = H.find(x => x.unidad === u) || H[0], pv2 = hh && (hh.unidad === u ? hh.precio : Math.round(conv(hh.precio, hh.unidad, u))); $('wUseRef').onclick = () => { $('wP').value = pv2; calc(); }; } }
@@ -1669,11 +1674,12 @@ function asistenteEquipo() {
     horoAviso(true); unidad(); $('wD').placeholder = diasDef(); calc(); };
   // equipos que no llevan horómetro (camión, aljibe, camioneta, pluma): se cotizan por día de jornada, controlado con el report diario
   let porHoraIgual = false, hdTocada = false, minTocada = false;
+  function jornadaTurno() { const t5 = val('wTu') === '5x2'; const h = t5 ? P('jornada_5x2', 8) : Math.round(P('horas_mes', 180) / 30 * 10) / 10; if ($('wHdl')) $('wHdl').textContent = t5 ? 'Horas por día (jornada 5x2: 8 h)' : `Horas por día (${nf(h, 1)} = ${P('horas_mes', 180)} h ÷ 30 días)`; return h; }
   const sinHoro = () => { const T = t(); return T && ['camion', 'aljibe', 'camioneta', 'grua'].includes(mqFam(T.nombre)); };
   const diasMes = () => val('wTu') === '5x2' ? 22 : 30;
   function horoAviso(nuevoTipo) {
     if (nuevoTipo) porHoraIgual = false;
-    if (!hdTocada) $('wHd').value = nf(Math.round(P('horas_mes', 180) / diasMes() * 10) / 10, 1);   // 5x2: 180 h ÷ 22 días ≈ 8,2 h
+    if (!hdTocada) $('wHd').value = nf(jornadaTurno(), 1);   // jornada según turno (5x2 = 8 h); se puede cambiar a mano
     if (sinHoro() && !porHoraIgual) {
       if (val('wU') !== 'día') { $('wU').value = 'día'; qTocada = false; minTocada = false; }
       qAuto();
