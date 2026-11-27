@@ -491,9 +491,15 @@ function opts(list, val, lab, ph) { return (ph != null ? `<option value="">${esc
 function modal(html) { $('mbox').classList.remove('wide'); $('mbox').innerHTML = html; $('modal').hidden = false; }
 function closeModal() { $('modal').hidden = true; $('mbox').innerHTML = ''; }
 $('modal').addEventListener('click', e => { if (e.target.id === 'modal' && !$('mbox').querySelector('input, select, textarea')) closeModal(); });   // ventanas con formulario solo se cierran con sus botones (no al pinchar fuera)
+const normNom = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+let GUARDANDO = false;
 async function guardar(fn, okMsg) {
+  if (GUARDANDO) return;  // evita doble clic = registros duplicados
+  GUARDANDO = true;
+  const btns = [...document.querySelectorAll('#modal button')]; btns.forEach(b => b.disabled = true);
   try { await fn(); await loadAll(); closeModal(); go(); if (okMsg) toast(okMsg); }
   catch (e) { if (e.message === 'SESSION') return showLogin('Su sesión expiró.'); alert(e.message); }
+  finally { GUARDANDO = false; btns.forEach(b => b.disabled = false); }
 }
 const val = id => { const e = $(id); return e ? e.value.trim() : ''; };
 
@@ -537,6 +543,9 @@ function formArriendo(a) {
     if ($('fMa').value === '__nuevo') {
       const nombre = (prompt('Nombre del mandante nuevo:') || '').trim();
       if (!nombre) { $('fMa').value = ''; return; }
+      const ya = D.mandantes.find(m => normNom(m.nombre) === normNom(nombre));
+      if (ya) { $('fMa').value = ya.id; toast(`"${ya.nombre}" ya existe: quedó seleccionado`); }
+      else {
       const hes = confirm(`¿"${nombre}" emite HES?\n\nAceptar = Sí (minera / empresa)\nCancelar = No (particular)`);
       try {
         const m = await ins('mandantes', {nombre, requiere_hes: hes});
@@ -544,6 +553,7 @@ function formArriendo(a) {
         const o = document.createElement('option'); o.value = m.id; o.textContent = m.nombre;
         $('fMa').insertBefore(o, $('fMa').lastElementChild); $('fMa').value = m.id; toast('Mandante agregado');
       } catch (e) { alert(e.message); $('fMa').value = ''; return; }
+      }
     }
     const m = byId('mandantes', $('fMa').value); if (m) $('fHe').value = m.requiere_hes ? '1' : '0';
   };
@@ -1201,6 +1211,8 @@ function nuevaCot() {
   $('ncM').onchange = async () => {
     if ($('ncM').value !== '__nuevo') { const m = byId('mandantes', $('ncM').value); if (m) { $('ncV').value = m.requiere_hes ? 10 : 5; $('ncTp').value = m.requiere_hes ? 'minera' : 'particular'; } return; }
     const nombre = (prompt('Nombre del mandante nuevo:') || '').trim(); if (!nombre) { $('ncM').value = ''; return; }
+    const ya = D.mandantes.find(m => normNom(m.nombre) === normNom(nombre));
+    if (ya) { $('ncM').value = ya.id; $('ncM').onchange(); toast(`"${ya.nombre}" ya existe: quedó seleccionado`); return; }
     const hes = confirm(`¿"${nombre}" emite HES?\n\nAceptar = Sí (minera / empresa)\nCancelar = No (particular)`);
     try { const m = await ins('mandantes', {nombre, requiere_hes: hes}); D.mandantes.push(m); const o = document.createElement('option'); o.value = m.id; o.textContent = m.nombre; $('ncM').insertBefore(o, $('ncM').lastElementChild); $('ncM').value = m.id; $('ncV').value = hes ? 10 : 5; $('ncTp').value = hes ? 'minera' : 'particular'; }
     catch (e) { alert(e.message); $('ncM').value = ''; }
