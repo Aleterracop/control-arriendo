@@ -1326,7 +1326,7 @@ function renderItems() {
   const hl = k => { const r = document.querySelector(`#tIt [data-up="${k}"]`); if (r) r.closest('tr').style.outline = '2px solid #e6a821'; };
   tb.querySelectorAll('[data-up]').forEach(b => b.onclick = () => { const i = +b.dataset.up; if (i > 0) { [c.items[i - 1], c.items[i]] = [c.items[i], c.items[i - 1]]; renderItems(); hl(i - 1); } });
   tb.querySelectorAll('[data-dn]').forEach(b => b.onclick = () => { const i = +b.dataset.dn; if (i < c.items.length - 1) { [c.items[i + 1], c.items[i]] = [c.items[i], c.items[i + 1]]; renderItems(); hl(i + 1); } });
-  tb.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { c.items.splice(+b.dataset.rm, 1); renderItems(); });
+  tb.querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { c.items.splice(+b.dataset.rm, 1); renumerarItems(c); renderItems(); });
   tb.querySelectorAll('[data-apu]').forEach(b => b.onclick = () => formAPU(+b.dataset.apu));
   tb.querySelectorAll('[data-hide]').forEach(b => b.onclick = () => {
     const it = c.items[+b.dataset.hide];
@@ -1961,6 +1961,47 @@ function valoresDoc(c, S, minera) {
     rut: AJ('empresa_rut') || '76.336.122-5', empresa: AJ('empresa') || 'Terracop SpA', numero: String(c.numero)
   };
 }
+/* ---------- Corrector ortográfico de la oferta (tildes y errores frecuentes) ---------- */
+const ORTO = {algun: 'algún', ningun: 'ningún', tambien: 'también', ademas: 'además', despues: 'después', segun: 'según', asi: 'así', aqui: 'aquí', alli: 'allí', mas: 'más',
+  dias: 'días', dia: 'día', mes: null, minimas: 'mínimas', minimo: 'mínimo', minima: 'mínima', minimos: 'mínimos', maximo: 'máximo', maxima: 'máxima', numero: 'número',
+  maquina: 'máquina', maquinas: 'máquinas', camion: 'camión', camiones: 'camiones', mantencion: 'mantención', mantenciones: 'mantenciones', operacion: 'operación', instalacion: 'instalación',
+  movilizacion: 'movilización', desmovilizacion: 'desmovilización', cotizacion: 'cotización', evaluacion: 'evaluación', coordinacion: 'coordinación', supresion: 'supresión', deteccion: 'detección',
+  ejecucion: 'ejecución', condicion: 'condición', condiciones: 'condiciones', adjudicacion: 'adjudicación', energia: 'energía', garantia: 'garantía', compania: 'compañía', tecnico: 'técnico',
+  tecnica: 'técnica', mecanico: 'mecánico', mecanicos: 'mecánicos', electrico: 'eléctrico', hidraulico: 'hidráulico', hidraulica: 'hidráulica', basico: 'básico', basica: 'básica', unico: 'único',
+  periodo: 'periodo', periodos: 'periodos', vehiculo: 'vehículo', vehiculos: 'vehículos', transito: 'tránsito', jornadas: 'jornadas', estadia: 'estadía', bateria: 'batería', analisis: 'análisis',
+  economica: 'económica', economico: 'económico', paginas: 'páginas', pagina: 'página', medica: 'médica', medico: 'médico', tambor: 'tambor', limite: 'límite', area: 'área', areas: 'áreas',
+  propuesta: 'propuesta', cobrara: 'cobrará', realizara: 'realizará', entregara: 'entregará', sera: 'será', estara: 'estará', debera: 'deberá', podra: 'podrá', podran: 'podrán', seran: 'serán', haran: 'harán',
+  retroexcavadora: 'retroexcavadora', excavacion: 'excavación', informacion: 'información', solicitud: 'solicitud', direccion: 'dirección', ubicacion: 'ubicación', duracion: 'duración', utilizacion: 'utilización',
+  aprobacion: 'aprobación', operacional: 'operacional', operacionales: 'operacionales', acreditacion: 'acreditación', certificacion: 'certificación', inspeccion: 'inspección', revision: 'revisión', version: 'versión'};
+const ORTO_FRASE = [[/\bretro\s+excavadora/gi, 'retroexcavadora'], [/\bmini\s+cargador/gi, 'minicargador'], [/\bmoto\s+niveladora/gi, 'motoniveladora']];
+function revisarOrtografia() {
+  const H = [], bloques = [...document.querySelectorAll('#cpDoc .cpx')];
+  const nombre = k => ({carta: 'Carta', alcance: 'Alcance', exclusiones: 'Exclusiones y aportes', consideraciones: 'Consideraciones', oferta_intro: 'Oferta económica', notas: 'Notas'}[k] || k);
+  bloques.forEach(el => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {acceptNode: n => n.parentElement.closest('[data-v]') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT});
+    let n; while ((n = w.nextNode())) { const t = n.nodeValue;
+      t.replace(/[A-Za-zÁÉÍÓÚáéíóúÑñÜü]+/g, (m, i) => { const ok = ORTO[m.toLowerCase()]; if (ok && ok !== m.toLowerCase()) { const fix = m[0] === m[0].toUpperCase() ? ok[0].toUpperCase() + ok.slice(1) : ok; H.push({el, n, i, len: m.length, de: m, a: fix, k: el.dataset.k}); } return m; });
+      ORTO_FRASE.forEach(([re, a]) => { re.lastIndex = 0; let r; while ((r = re.exec(t))) H.push({el, n, i: r.index, len: r[0].length, de: r[0], a, k: el.dataset.k}); });
+      let r; const esp = / +([.,;:)])/g; while ((r = esp.exec(t))) H.push({el, n, i: r.index, len: r[0].length, de: `«${r[0]}» (espacio antes de «${r[1]}»)`, a: r[1], k: el.dataset.k});
+      const dob = / {2,}/g; while ((r = dob.exec(t))) H.push({el, n, i: r.index, len: r[0].length, de: '«  » (doble espacio)', a: ' ', k: el.dataset.k});
+    }
+    el.querySelectorAll('li').forEach(li => { const tn = document.createTreeWalker(li, NodeFilter.SHOW_TEXT).nextNode(); if (tn && /^\s*[a-záéíóúñ]/.test(tn.nodeValue) && !li.closest('[data-v]')) { const i = tn.nodeValue.search(/[a-záéíóúñ]/); H.push({el, n: tn, i, len: 1, de: `«${tn.nodeValue.trim().slice(0, 25)}…» (empieza con minúscula)`, a: tn.nodeValue[i].toUpperCase(), k: el.dataset.k}); } });
+  });
+  modal(`<div class="row"><h3 style="margin:0">🔤 Revisión de ortografía</h3><span class="sp"></span><button id="orX">Cerrar</button></div>
+    <div class="small muted" style="margin:4px 0 10px">Revisa tildes y errores frecuentes en los textos de la oferta. Marque lo que quiere corregir. Además, el navegador subraya en rojo las palabras que no reconoce: haga clic derecho sobre ellas para ver sugerencias.</div>
+    ${H.length ? `<div class="tw"><table><thead><tr><th style="width:28px"><input type="checkbox" id="orAll" checked style="width:auto"></th><th>Bloque</th><th>Dice</th><th>Corregir a</th></tr></thead><tbody>${H.map((h, j) => `<tr><td><input type="checkbox" data-or="${j}" checked style="width:auto"></td><td class="small">${esc(nombre(h.k))}</td><td>${esc(h.de)}</td><td><b>${esc(h.a === ' ' ? '« » (un espacio)' : h.a)}</b></td></tr>`).join('')}</tbody></table></div>
+      <div class="mf"><button id="orC">Cancelar</button><button class="pri" id="orOk">Corregir seleccionados (${H.length})</button></div>` : '<div class="msg ok">✅ No se encontraron faltas frecuentes. Revise igual las palabras subrayadas en rojo por el navegador.</div>'}`);
+  $('mbox').classList.add('wide'); $('orX').onclick = closeModal; if ($('orC')) $('orC').onclick = closeModal;
+  if ($('orAll')) $('orAll').onchange = () => document.querySelectorAll('[data-or]').forEach(c => c.checked = $('orAll').checked);
+  if ($('orOk')) $('orOk').onclick = () => {
+    const sel = H.filter((h, j) => document.querySelector(`[data-or="${j}"]`).checked);
+    sel.sort((a, b) => a.n === b.n ? b.i - a.i : 0);   // de atrás hacia adelante en cada nodo, para no correr las posiciones
+    const porNodo = new Map(); sel.forEach(h => { if (!porNodo.has(h.n)) porNodo.set(h.n, []); porNodo.get(h.n).push(h); });
+    porNodo.forEach((L, n) => { let t = n.nodeValue; const usados = []; L.sort((a, b) => b.i - a.i).forEach(h => { if (usados.some(u => h.i < u.fin && h.i + h.len > u.ini)) return; t = t.slice(0, h.i) + h.a + t.slice(h.i + h.len); usados.push({ini: h.i, fin: h.i + h.len}); }); n.nodeValue = t; });
+    new Set(sel.map(h => h.el)).forEach(el => el.dispatchEvent(new Event('input')));
+    closeModal(); toast(`${sel.length} corrección(es) aplicada(s) · se guardan solas`);
+  };
+}
 const V = k => `<span data-v="${k}" contenteditable="false"></span>`;
 const mantIncluida = c => { const m = byId('mandantes', c.mandante_id) || {}; return /\[mant_incluida\]/.test(m.notas || '') || (!/\[mant_cobrada\]/.test(m.notas || '') && /f[eé]nix/i.test((m.nombre || '') + ' ' + (c.cliente || ''))); };
 function textosBase(c, S, minera) {
@@ -1981,7 +2022,7 @@ function textosBase(c, S, minera) {
     al.push(`De acuerdo con lo solicitado por ${V('cliente')}, la presente oferta considera el servicio de arriendo de ${eqTxt}${ops}, por un periodo de ${V('dias')} días${cont}, ${turno}${minimo}.`);
     al.push(`Se consideran como parte de nuestra oferta los siguientes equipos:<ol>${S.lista.map(g => `<li>${capi(nombreEquipos(g.nombre, g.n))}${S.opMix ? (g.op ? ' con operador' : ' sin operador') : ''}.</li>`).join('') || '<li>…</li>'}</ol>`);
   }
-  const tieneAnsul = (c.items || []).some(i => i.adic === 'ansul') || ((c.compartidos || {}).rows || []).some(r => r.adic === 'ansul');
+  const tieneAnsul = (c.items || []).some(i => /^ansul/.test(i.adic || '')) || ((c.compartidos || {}).rows || []).some(r => /^ansul/.test(r.adic || ''));
   if (minera) al.push(`Se considera que los equipos cuentan con el siguiente equipamiento minero básico:<ul><li>Pértiga.</li><li>Baliza.</li><li>Un extintor de 10 kg con mantención al día${tieneAnsul ? '' : ' (sin sistema supresor de incendio automático o semiautomático)'}.</li><li>Corta corriente exterior.</li><li>Parada de emergencia por ambos lados del equipo.</li><li>Radio base con frecuencia a programar por el mandante.</li></ul>`);
   else al.push('Los equipos se entregan en buen estado mecánico, con su mantención al día y extintor.');
   const AD = {}, eqIt = (c.items || []).filter(i => i.tipo === 'i' && i.equipo_tipo_id && !/moviliz/i.test(i.desc || ''));
@@ -1992,10 +2033,11 @@ function textosBase(c, S, minera) {
   const mantPropia = AD.mec250 || AD.ins250;
   if (AD.mec250) al.push('Se considera la mantención preventiva cada 250 horas máquina realizada por el equipo de mantenimiento de Terracop en faena, incluidos el mecánico y su traslado en vehículo de apoyo.');
   if (AD.ins250 && !AD.mec250) al.push('Se consideran los insumos de la mantención preventiva cada 250 horas máquina (filtros, aceites y lubricantes), por cuenta de Terracop. La mano de obra de la mantención será realizada por los mecánicos del mandante.');
-  if (AD.ansul) al.push(`Se considera sistema de supresión de incendios ANSUL en ${lista(AD.ansul.para)}.`);
+  if (AD.ansul) al.push(`Se considera sistema de supresión de incendios ANSUL semiautomático en ${lista(AD.ansul.para)}, incluida su instalación.`);
+  if (AD.ansul_auto) al.push(`Se considera sistema de supresión de incendios ANSUL automático en ${lista(AD.ansul_auto.para)}, incluida su instalación.`);
   if (AD.fatiga_inst || AD.fatiga_mes) { const st = new Set([...(AD.fatiga_inst ? AD.fatiga_inst.para : []), ...(AD.fatiga_mes ? AD.fatiga_mes.para : [])]);
     al.push(`Se considera sistema de detección de fatiga y somnolencia en ${lista(st)}${AD.fatiga_inst ? ', incluida su instalación' : ''}${AD.fatiga_mes ? (AD.fatiga_inst ? ' y su arriendo mensual' : ', con su arriendo mensual') + ' durante el periodo del servicio' : ''}.`); }
-  Object.entries(AD).filter(([k]) => !['mec250', 'ins250', 'ansul', 'fatiga_inst', 'fatiga_mes'].includes(k)).forEach(([, a]) => al.push(`Se considera ${String(a.n || '').replace(/\s*\(incluido\).*$/, '').replace(/\s+–.*$/, '').replace(/^./, m => m.toLowerCase())} en ${lista(a.para)}.`));
+  Object.entries(AD).filter(([k]) => !['mec250', 'ins250', 'ansul', 'ansul_auto', 'fatiga_inst', 'fatiga_mes'].includes(k)).forEach(([, a]) => al.push(`Se considera ${String(a.n || '').replace(/\s*\(incluido\).*$/, '').replace(/\s+–.*$/, '').replace(/^./, m => m.toLowerCase())} en ${lista(a.para)}.`));
   if (mantPropia) ; else if (mantIncluida(c)) al.push('Se considera como parte de los aportes del servicio la mantención preventiva cada 250 horas máquina y la asistencia mecánica en terreno, realizadas por el equipo de mantenimiento de Terracop.');
   else al.push(`La mantención preventiva cada 250 horas máquina será realizada por el equipo de mantenimiento de Terracop en faena. Su costo, que considera el mecánico y su traslado de ida y vuelta a faena en vehículo de apoyo, será de cargo del mandante, con un valor de ${clp(P('mantencion_250', 1500000))} + IVA por cada mantención.`);
   if (S.op && S.al === 'alim') al.push('Se considera la alimentación de los operadores durante la jornada, por cuenta de Terracop. No se considera alojamiento: los operadores se trasladan diariamente desde su lugar de residencia.');
@@ -2129,7 +2171,7 @@ async function docCompleto(id, fresco) {
     <label class="row small" style="margin:0;gap:6px">Plantilla <select id="cpPl" style="width:auto"><option value="minera">Minera / empresa (equipamiento minero, campamento)</option><option value="particular">Particular (más corta)</option></select></label>
     <label class="row small" style="margin:0;cursor:pointer;gap:6px;color:var(--ink);font-weight:400"><input type="checkbox" id="cpAg" style="width:auto" ${doc.agrupar ? 'checked' : ''}> Mostrar equipos iguales en una sola línea</label>
     <span class="row" style="gap:4px;margin:0" title="Seleccione el texto y elija el formato"><button class="sm" data-fmt="bold" title="Negrita (Ctrl+B)"><b>N</b></button><button class="sm" data-fmt="underline" title="Subrayado (Ctrl+U)"><u>S</u></button><button class="sm" data-fmt="justifyFull" title="Justificar">☰ Justificar</button><button class="sm" data-fmt="justifyLeft" title="Alinear a la izquierda">⇤ Izquierda</button><button class="sm" data-fmt="insertUnorderedList" title="Viñetas">• Viñetas</button></span>
-    <span class="sp"></span><button id="cpTpl" title="Las próximas cotizaciones con esta plantilla partirán con estos textos">⭐ Usar como plantilla</button><button id="cpSave">💾 Guardar textos</button><button id="cpWord">⬇️ Word</button><button class="pri" id="cpPdf">🖨️ Guardar PDF</button></div>
+    <button class="sm" id="cpOrto" title="Revisa tildes y errores frecuentes">🔤 Revisar ortografía</button><span class="sp"></span><button id="cpTpl" title="Las próximas cotizaciones con esta plantilla partirán con estos textos">⭐ Usar como plantilla</button><button id="cpSave">💾 Guardar textos</button><button id="cpWord">⬇️ Word</button><button class="pri" id="cpPdf">🖨️ Guardar PDF</button></div>
     <div id="cpSt" class="small muted" style="margin-top:4px"></div></div>
     <div class="card noprint"><div class="small muted">Toque cualquier texto para corregirlo; para negrita, subrayado o justificar, seleccione el texto y use los botones N, S y ☰ (los errores de ortografía se marcan en rojo). Los datos <span style="border-bottom:2px dotted #3d7fd1">subrayados</span> (cliente, días, horas, faena…) y la tabla de precios vienen de la cotización: si la cambia, aquí se actualizan solos. Lo <span style="background:#fff3b8">amarillo</span> falta completarlo en la cotización. Archivo: <b>${txt(fname)}</b>. La barra de botones lo acompaña mientras baja por el documento.</div></div>
   ${chkHTML}
@@ -2144,6 +2186,8 @@ async function docCompleto(id, fresco) {
   };
   document.querySelectorAll('#cpDoc .cpx').forEach(el => el.onpaste = e => { e.preventDefault(); const t = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, t); });
   document.querySelectorAll('#cpDoc .cpx').forEach(el => { const limpia = () => { let n = 0; el.querySelectorAll('mark.cpfal').forEach(m => { if (!/\[[^\]]+\]/.test(m.textContent)) { m.replaceWith(...m.childNodes); n++; } }); if (n) el.dispatchEvent(new Event('input')); }; el.addEventListener('blur', limpia); limpia(); });
+  document.querySelectorAll('#cpDoc .cpx').forEach(el => { el.spellcheck = true; el.lang = 'es'; });   // el navegador subraya en rojo las palabras mal escritas
+  if ($('cpOrto')) $('cpOrto').onclick = revisarOrtografia;
   document.querySelectorAll('#cpDoc .cpx').forEach(el => el.oninput = () => { doc.txt[el.dataset.k] = el.innerHTML; $('cpSt').textContent = 'Cambios sin guardar…'; clearTimeout(cpTimer); cpTimer = setTimeout(() => guardarDoc(true), 1500); });
   document.querySelectorAll('[data-reset]').forEach(b => b.onclick = () => { if (!confirm('¿Volver al texto automático? Se pierden los cambios que hizo a mano en este bloque.')) return; delete doc.txt[b.dataset.reset]; guardarDoc(true); docCompleto(id, true); });
   $('cpPl').onchange = () => { const hay = Object.keys(doc.txt).length; if (hay && !confirm('Cambiar la plantilla vuelve a generar los textos automáticos. Los bloques que corrigió a mano se mantienen. ¿Continuar?')) { $('cpPl').value = minera ? 'minera' : 'particular'; return; } doc.plantilla = $('cpPl').value; guardarDoc(true); docCompleto(id, true); };
@@ -2248,13 +2292,16 @@ const CC_RAPIDOS = [['Supervisor', 'mes', 1, 'supervisor'], ['Prevencionista de 
 const hrsItem = it => { const q = +it.cantidad || 0, m = it.meta || {}; return it.unidad === 'hm' ? q : it.unidad === 'mes' ? q * P('horas_mes', 180) : it.unidad === 'día' ? q * (m.hd || P('horas_mes', 180) / 30) : q; };
 /* ---------- Adicionales del arriendo (ANSUL, fatiga y somnolencia, insumos de mantención…) ---------- */
 const ADIC_BASE = [
-  {id: 'ansul', nombre: 'Sistema de supresión de incendios ANSUL', unidad: 'equipo', precio: 2895000, base: 'equipo', nota: 'Solo para clientes que lo exigen'},
+  {id: 'ansul', nombre: 'Sistema de supresión de incendios ANSUL – semiautomático', unidad: 'equipo', precio: 2895000, base: 'equipo', nota: 'Incluye instalación (4 Fire, cot. 01279/26) · solo si el cliente lo exige'},
+  {id: 'ansul_auto', nombre: 'Sistema de supresión de incendios ANSUL – automático', unidad: 'equipo', precio: 0, base: 'equipo', nota: 'Valor por cotizar: escríbalo a mano · solo si el cliente lo exige'},
   {id: 'fatiga_inst', nombre: 'Sistema de detección de fatiga y somnolencia – instalación', unidad: 'equipo', precio: 0, base: 'equipo', solo: 'camiones', nota: 'Valor de la instalación: escríbalo a mano · para camiones'},
   {id: 'fatiga_mes', nombre: 'Sistema de detección de fatiga y somnolencia – arriendo mensual', unidad: 'mes', precio_uf: 1, base: 'mes', solo: 'camiones', nota: '1 UF mensual por equipo · para camiones'},
   {id: 'ins250', nombre: 'Insumos de mantención 250 h (filtros, aceites y lubricantes)', unidad: 'mantención', precio: 0, base: 'mantencion', nota: 'Cuando el mandante usa sus propios mecánicos'},
   {id: 'mec250', nombre: 'Mantención 250 h con mecánico de Terracop (mano de obra, traslado y vehículo 4x4)', unidad: 'mantención', precio: null, base: 'mantencion', nota: 'Valor del parámetro mantencion_250'}];
 function adicCatalogo() { let L = null; try { L = JSON.parse(AJ('adicionales') || 'null'); } catch (e) {}
   L = Array.isArray(L) ? L : ADIC_BASE.map(x => ({...x}));
+  if (!L.some(x => x.id === 'ansul_auto')) { const ia = L.findIndex(x => x.id === 'ansul'); L.splice(ia >= 0 ? ia + 1 : 0, 0, {...ADIC_BASE.find(x => x.id === 'ansul_auto')});
+    const a = L.find(x => x.id === 'ansul'); if (a && a.nombre === 'Sistema de supresión de incendios ANSUL') a.nombre = ADIC_BASE[0].nombre; }   // catálogo guardado antes: agrega el automático
   const iF = L.findIndex(x => x.id === 'fatiga'); if (iF >= 0) L.splice(iF, 1, ...ADIC_BASE.filter(x => x.id.startsWith('fatiga_')).map(x => ({...x})));   // versión anterior: una sola línea de fatiga
   L.forEach(x => { if (/^fatiga/.test(x.id) && !x.solo) x.solo = 'camiones';
     if (x.id === 'mec250' && x.precio == null) x.precio = P('mantencion_250', 1500000); if (x.precio_uf) x.precio = Math.round(x.precio_uf * P('uf', 40000)); }); return L; }
@@ -2308,6 +2355,13 @@ function formAdicionales() {
     closeModal(); if ($('ccBox')) { $('ccBox').innerHTML = compartidosHTML(c); bindCompartidos(); } renderItems();
     toast(`${n} adicional(es) agregado(s) · recuerde Guardar`); if (falta.length) alert('Falta el valor de: ' + falta.join(', ') + '.\n\nEscríbalo en la tabla de ítems (si es visible) o en Costos compartidos (si va incluido).');
   };
+}
+function renumerarItems(c) {   // tras borrar: A.1, A.2… seguidos dentro de cada grupo (los costos compartidos siguen a su ítem)
+  const mapa = {}; let g = null, n = 0;
+  (c.items || []).forEach(it => { if (it.tipo === 'g') { g = it.item; n = 0; return; } if (it.tipo !== 'i' || !g || !String(it.item || '').startsWith(g + '.')) return;
+    const nuevo = `${g}.${++n}`; if (it.item !== nuevo) { mapa[it.item] = nuevo; it.item = nuevo; } });
+  if (Object.keys(mapa).length) { (c.items || []).forEach(it => { if (it.adic_para) it.adic_para = it.adic_para.map(x => mapa[x] || x); });
+    ((c.compartidos || {}).rows || []).forEach(r => { if (r.para) r.para = r.para.map(x => mapa[x] || x); }); }
 }
 function aplicarCompartidos(c) {   // recalcula la parte de cada equipo y la deja en su costo (y en su 🧮)
   const cc = c.compartidos || {rows: []}, rows = cc.rows || [], total = rows.reduce((s, r) => s + (+r.q || 0) * (+r.p || 0), 0);
